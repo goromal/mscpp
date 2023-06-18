@@ -1,5 +1,9 @@
 #pragma once
+#include <boost/circular_buffer.hpp>
+#include <condition_variable>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <type_traits>
 
 template<typename... T>
@@ -138,4 +142,104 @@ protected:
         }
         mInstance = std::move(instance);
     }
+};
+
+template<typename T>
+class __threadsafe_circular_buffer final
+{
+public:
+    explicit __threadsafe_circular_buffer(const unsigned long maxSize) noexcept : mRunning(true), mBuffer(maxSize) {}
+
+    void push_back(T&& val) noexcept
+    {
+        {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mBuffer.push_back(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+    }
+
+    void push_back(const T& val) noexcept
+    {
+        {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mBuffer.push_back(val);
+        }
+        mCondition.notify_one();
+    }
+
+    void push_front(T&& val) noexcept
+    {
+        {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mBuffer.push_front(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+    }
+
+    void push_front(const T& val) noexcept
+    {
+        {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mBuffer.push_front(val);
+        }
+        mCondition.notify_one();
+    }
+
+    bool drainUntil(std::function<bool(T&&)> checkFunc) noexcept
+    {
+        std::unique_lock<std::mutex> lock(mMutex);
+        mCondition.wait(lock, [=]() { return !this->mRunning || !this->mBuffer.empty(); });
+        if (!this->mRunning)
+        {
+            lock.unlock();
+            return false;
+        }
+        while (!mBuffer.empty())
+        {
+            if (!checkFunc(std::move(mBuffer[0])))
+            {
+                break;
+            }
+            mBuffer.pop_front();
+        }
+        lock.unlock();
+        return true;
+    }
+
+    unsigned long size() noexcept
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mBuffer.size();
+    }
+
+    void clear() noexcept
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mBuffer.clear();
+    }
+
+    void stop() noexcept
+    {
+        {
+            std::lock_guard<std::mutex> lock(mMutex);
+            mRunning = false;
+        }
+        mCondition.notify_all();
+    }
+
+    bool empty() noexcept
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        return mBuffer.empty();
+    }
+
+    __threadsafe_circular_buffer(const __threadsafe_circular_buffer&) = delete;
+    __threadsafe_circular_buffer& operator=(const __threadsafe_circular_buffer&) = delete;
+
+private:
+    boost::circular_buffer<T> mBuffer;
+    bool                      mRunning;
+    std::mutex                mMutex;
+    std::condition_variable   mCondition;
 };

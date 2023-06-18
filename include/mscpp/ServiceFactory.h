@@ -5,6 +5,9 @@
 #include "MicroServiceContainer.h"
 #include "internal/utils.h"
 
+namespace services
+{
+
 template<typename... Types>
 struct __factory_helper;
 
@@ -215,3 +218,5 @@ private:
         return get<T>()->running() || foundRunning;
     }
 };
+
+} // namespace services

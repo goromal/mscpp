@@ -1,6 +1,9 @@
 #pragma once
 #include "internal/utils.h"
 
+namespace services
+{
+
 template<typename... MicroServices>
 class MicroServiceContainer : private __instance_wrapper<MicroServices>...
 {
@@ -102,3 +105,5 @@ private:
 
     const size_t mNumMicroServices = sizeof...(MicroServices);
 };
+
+} // namespace services
