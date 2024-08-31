@@ -4,6 +4,7 @@
 
 #include "MicroServiceContainer.h"
 #include "internal/utils.h"
+#include "internal/logger.h"
 
 template<typename... Types>
 struct __factory_helper;
@@ -23,15 +24,20 @@ public:
 
     ServiceFactory() : __instance_wrapper<MicroServices>()...
     {
+        mslogSetLevel(LOG_WARN);
+        mslogRun();
         validateDependencies<MicroServices...>(__place_holder<MicroServices>()...);
         createServices<MicroServices...>(__place_holder<MicroServices>()...);
         runServices<MicroServices...>(__place_holder<MicroServices>()...);
     }
 
-    ServiceFactory(__handle_later startLater) : __instance_wrapper<MicroServices>()...
+    ServiceFactory(log_level_t logLevel) : __instance_wrapper<MicroServices>()...
     {
+        mslogSetLevel(logLevel);
+        mslogRun();
         validateDependencies<MicroServices...>(__place_holder<MicroServices>()...);
         createServices<MicroServices...>(__place_holder<MicroServices>()...);
+        runServices<MicroServices...>(__place_holder<MicroServices>()...);
     }
 
     ~ServiceFactory()
@@ -78,6 +84,7 @@ public:
         {
             stopServices<MicroServices...>(__place_holder<MicroServices>()...);
         }
+        msLogStop();
     }
 
 private:
