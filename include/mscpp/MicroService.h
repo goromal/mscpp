@@ -139,7 +139,7 @@ private:
         template<typename InputType>
         void execute(Store& store, const InputType& input)
         {
-            size_t nextState = mStates.runOnActiveState([this, store, &input](auto& state) -> size_t {
+            const size_t nextState = mStates.runOnActiveState([this, store, &input](auto& state) -> size_t {
                 using S = typename std::decay<decltype(state)>::type;
                 using I = typename std::decay<InputType>::type;
                 assertStepExists<S, I>();
@@ -161,10 +161,9 @@ private:
                 return Index<T, std::tuple<States...>>::value;
             }
 
-            template<typename S>
-            void transition()
+            void transition(const size_t& state)
             {
-                mActiveState = index<S>();
+                mActiveState = state;
             }
 
             template<typename F>
