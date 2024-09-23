@@ -15,7 +15,7 @@
 #define MAX_INPUT_QUEUE_SIZE 100
 
 /*
-MicroService creation process: ^^^^ TODO move to README
+MicroService creation process: ^^^^ move to README
 - Define Store struct
 - Define Container type = MicroServiceContainer<SiblingServices...>
 - Define Inputs, each inheriting from Input
@@ -139,11 +139,11 @@ private:
         template<typename InputType>
         void execute(Store& store, const InputType& input)
         {
-            const size_t nextState = mStates.runOnActiveState([this, store, &input](auto& state) -> size_t {
+            const size_t nextState = mStates.runOnActiveState([this, &store, &input](auto& state) -> size_t {
                 using S = typename std::decay<decltype(state)>::type;
                 using I = typename std::decay<InputType>::type;
                 assertStepExists<S, I>();
-                return state.step(store, mContainer, input);
+                return state.step(store, mContainer, input); // ^^^^ TODO input needs to be a pointer for polymorphism
             });
             mStates.transition(nextState);
         }

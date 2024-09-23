@@ -189,7 +189,7 @@ public:
     bool drainUntil(std::function<bool(T&&)> checkFunc) noexcept
     {
         std::unique_lock<std::mutex> lock(mMutex);
-        mCondition.wait(lock, [=]() { return !this->mRunning || !this->mBuffer.empty(); });
+        mCondition.wait(lock, [=, this]() { return !this->mRunning || !this->mBuffer.empty(); });
         if (!this->mRunning)
         {
             lock.unlock();
@@ -234,7 +234,7 @@ public:
         return mBuffer.empty();
     }
 
-    __threadsafe_circular_buffer(const __threadsafe_circular_buffer&) = delete;
+    __threadsafe_circular_buffer(const __threadsafe_circular_buffer&)            = delete;
     __threadsafe_circular_buffer& operator=(const __threadsafe_circular_buffer&) = delete;
 
 private:
