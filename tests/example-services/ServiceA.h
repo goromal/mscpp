@@ -25,7 +25,8 @@ struct StoreA
 
 struct InitStateA : public services::State<InitStateA>
 {
-    const size_t stateIndex() const;
+    static const size_t stateIndex();
+
     const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
@@ -33,7 +34,8 @@ struct InitStateA : public services::State<InitStateA>
 
 struct RunningStateA : public services::State<RunningStateA>
 {
-    const size_t stateIndex() const;
+    static const size_t stateIndex();
+
     const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
@@ -41,7 +43,8 @@ struct RunningStateA : public services::State<RunningStateA>
 
 struct StoppedStateA : public services::State<StoppedStateA>
 {
-    const size_t stateIndex() const;
+    static const size_t stateIndex();
+
     const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);

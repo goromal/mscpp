@@ -16,7 +16,8 @@ struct StoreB
 
 struct InitStateB : public services::State<InitStateB>
 {
-    const size_t stateIndex() const;
+    static const size_t stateIndex();
+
     const size_t step(StoreB& s, const ContainerTypeB& c, const HeartbeatInput& i);
 };
 

@@ -1,6 +1,6 @@
 #include "ServiceB.h"
 
-const size_t InitStateB::stateIndex() const
+const size_t InitStateB::stateIndex()
 {
     return 0;
 }
