@@ -24,12 +24,12 @@ const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, const Heartbea
     return InitStateB::index();
 }
 
-const std::string ServiceB::name() const override
+const std::string ServiceB::name() const
 {
     return "ServiceB";
 }
 
-const std::shared_ptr<services::Input> ServiceB::getHeartbeatInput() const override
+const std::shared_ptr<services::Input> ServiceB::getHeartbeatInput() const
 {
     return std::make_shared<HeartbeatInput>();
 }

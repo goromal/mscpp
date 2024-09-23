@@ -263,9 +263,10 @@ private:
 
         static_assert(getQueueWindowSize() > 0 && getQueueWindowSize() <= MAX_INPUT_QUEUE_SIZE,
                       "Invalid queue window size");
-        static_assert(getHeatbeatInput()->duration() > milliseconds(0), "Heartbeat input must have a nonzero duration");
+        static_assert(getHeartbeatInput()->duration() > milliseconds(0),
+                      "Heartbeat input must have a nonzero duration");
 
-        const auto heartbeatInput  = getHeatbeatInput();
+        const auto heartbeatInput  = getHeartbeatInput();
         const auto queueWindowSize = getQueueWindowSize();
 
         auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput->duration());

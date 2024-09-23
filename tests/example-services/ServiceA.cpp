@@ -87,7 +87,7 @@ void ServiceA::transition(const size_t& state)
     addInputToQueue(std::make_shared<TransitionInput>(state));
 }
 
-const std::shared_ptr<services::Input> ServiceA::getHeartbeatInput() const override
+const std::shared_ptr<services::Input> ServiceA::getHeartbeatInput() const
 {
     return std::make_shared<HeartbeatInput>();
 }
