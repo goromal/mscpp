@@ -18,8 +18,14 @@ target_include_directories(${PROJ_NAME} INTERFACE
 if (BUILD_TESTS)
     set(UNIT_TEST unit-tests)
     add_executable(${UNIT_TEST}
+        tests/example-services/Inputs.cpp
+        tests/example-services/ServiceA.cpp
+        tests/example-services/ServiceB.cpp
         tests/MainTest.cpp
         tests/ServiceTest.cpp
+    )
+    target_include_directories(${UNIT_TEST} PRIVATE
+        tests/example-services
     )
     target_link_libraries(${UNIT_TEST}
         ${PROJ_NAME}
