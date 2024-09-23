@@ -261,10 +261,9 @@ private:
     {
         using namespace std::chrono;
 
-        static_assert(getQueueWindowSize() > 0 && getQueueWindowSize() <= MAX_INPUT_QUEUE_SIZE,
-                      "Invalid queue window size");
-        static_assert(getHeartbeatInput()->duration() > milliseconds(0),
-                      "Heartbeat input must have a nonzero duration");
+        assert(getQueueWindowSize() > 0);
+        assert(getQueueWindowSize() <= MAX_INPUT_QUEUE_SIZE);
+        assert(getHeartbeatInput()->duration() > milliseconds(0));
 
         const auto heartbeatInput  = getHeartbeatInput();
         const auto queueWindowSize = getQueueWindowSize();
