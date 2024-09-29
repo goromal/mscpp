@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "mscpp/StateSet.h"
 #include "mscpp/MicroService.h"
 #include "mscpp/MicroServiceContainer.h"
 
@@ -50,7 +51,9 @@ struct StoppedStateA : public services::State<StoppedStateA>
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
 };
 
-class ServiceA : public services::MicroService<StoreA, ContainerTypeA, InitStateA, RunningStateA, StoppedStateA>
+using StatesA = services::StateSet<InitStateA, RunningStateA, StoppedStateA>;
+
+class ServiceA : public services::MicroService<StoreA, ContainerTypeA, StatesA, Inputs>
 {
 public:
     const std::string name() const override;
@@ -58,5 +61,5 @@ public:
     void              transition(const size_t& state);
 
 private:
-    const std::shared_ptr<services::Input> getHeartbeatInput() const override;
+    const Inputs::Heartbeat getHeartbeatInput() const override;
 };

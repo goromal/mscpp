@@ -29,7 +29,7 @@ const std::string ServiceB::name() const
     return "ServiceB";
 }
 
-const std::shared_ptr<services::Input> ServiceB::getHeartbeatInput() const
+const HeartbeatInput ServiceB::getHeartbeatInput() const
 {
-    return std::make_shared<HeartbeatInput>();
+    return HeartbeatInput();
 }

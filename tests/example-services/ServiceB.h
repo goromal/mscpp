@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mscpp/StateSet.h"
 #include "mscpp/MicroService.h"
 #include "mscpp/MicroServiceContainer.h"
 
@@ -21,11 +22,13 @@ struct InitStateB : public services::State<InitStateB>
     const size_t step(StoreB& s, const ContainerTypeB& c, const HeartbeatInput& i);
 };
 
-class ServiceB : public services::MicroService<StoreB, ContainerTypeB, InitStateB>
+using StatesB = services::StateSet<InitStateB>;
+
+class ServiceB : public services::MicroService<StoreB, ContainerTypeB, StatesB, Inputs>
 {
 public:
     const std::string name() const override;
 
 private:
-    const std::shared_ptr<services::Input> getHeartbeatInput() const override;
+    const Inputs::Heartbeat getHeartbeatInput() const override;
 };

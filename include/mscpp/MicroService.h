@@ -35,23 +35,7 @@ functions).
 namespace services
 {
 
-struct Input
-{
-    virtual const uint8_t                   priority() const = 0;
-    virtual const std::chrono::milliseconds duration() const = 0;
-};
-
-template<class S>
-struct State
-{
-    static const size_t index()
-    {
-        return S::stateIndex();
-    }
-};
-
-// template<typename States, typename Inputs, typename Store, typename ContainerType>
-template<typename Store, typename ContainerType, typename... States>
+template<typename Store, typename ContainerType, typename States, typename Inputs>
 class MicroService
 {
 public:
@@ -117,7 +101,7 @@ public:
     }
 
 protected:
-    virtual const std::shared_ptr<Input> getHeartbeatInput() const = 0;
+    virtual const Inputs::Heartbeat getHeartbeatInput() const = 0;
 
     virtual void          setup() {}
     virtual void          initStore(Store& store) {}
@@ -127,7 +111,7 @@ protected:
         return 5;
     }
 
-    void addInputToQueue(std::shared_ptr<Input>&& input)
+    void addInputToQueue(Inputs::TypesVariant&& input)
     {
         mInputBuffer.push_back(std::move(input));
     }
@@ -141,97 +125,15 @@ private:
         {
             const size_t nextState = mStates.runOnActiveState([this, &store, &input](auto& state) -> size_t {
                 using S = typename std::decay<decltype(state)>::type;
-                using I = typename std::decay<InputType>::type;
+                using I = InputType::DerivedType;
                 assertStepExists<S, I>();
-                return state.step(store, mContainer, input); // ^^^^ TODO input needs to be a pointer for polymorphism
+                return state.step(store, mContainer, input);
             });
             mStates.transition(nextState);
         }
 
     private:
-        class StateSet
-        {
-        public:
-            size_t                mActiveState = 0; // Init state is the first one in the template list
-            std::tuple<States...> mStates;
-
-            template<typename T>
-            static constexpr size_t index()
-            {
-                return Index<T, std::tuple<States...>>::value;
-            }
-
-            void transition(const size_t& state)
-            {
-                mActiveState = state;
-            }
-
-            template<typename F>
-            decltype(auto) runOnActiveState(F&& f)
-            {
-                return runOnActiveStateImpl<sizeof...(States) - 1>(std::forward<F>(f));
-            }
-
-            template<typename F>
-            decltype(auto) runOnActiveState(F&& f) const
-            {
-                return runOnActiveStateImpl<sizeof...(States) - 1>(std::forward<F>(f));
-            }
-
-        private:
-            template<size_t I, typename F>
-            decltype(auto) runOnActiveStateImpl(F&& f)
-            {
-                if (I == mActiveState)
-                {
-                    return f(std::get<I>(mStates));
-                }
-
-                if constexpr (I > 0)
-                {
-                    return runOnActiveStateImpl<I - 1>(std::forward<F>(f));
-                }
-                else
-                {
-                    throw std::out_of_range("State index out of range");
-                }
-            }
-
-            template<size_t I, typename F>
-            decltype(auto) runOnActiveStateImpl(F&& f) const
-            {
-                if (I == mActiveState)
-                {
-                    return f(std::get<I>(mStates));
-                }
-
-                if constexpr (I > 0)
-                {
-                    return runOnActiveStateImpl<I - 1>(std::forward<F>(f));
-                }
-                else
-                {
-                    throw std::out_of_range("State index out of range");
-                }
-            }
-
-            template<class T, class Tuple>
-            struct Index;
-
-            template<class T, class... Types>
-            struct Index<T, std::tuple<T, Types...>>
-            {
-                static constexpr std::size_t value = 0;
-            };
-
-            template<class T, class U, class... Types>
-            struct Index<T, std::tuple<U, Types...>>
-            {
-                static constexpr std::size_t value = 1 + Index<T, std::tuple<Types...>>::value;
-            };
-        };
-
-        StateSet  mStates;
+        States    mStates;
         Container mContainer;
 
         template<typename S, typename I>
@@ -254,7 +156,7 @@ private:
     std::thread        mMainThread;
     std::atomic_bool   mRunning{false};
 
-    __threadsafe_circular_buffer<std::shared_ptr<Input>> mInputBuffer{MAX_INPUT_QUEUE_SIZE};
+    __threadsafe_circular_buffer<typename Inputs::TypesVariant> mInputBuffer{MAX_INPUT_QUEUE_SIZE};
 
     void mainLoop(Store store)
     {
@@ -262,19 +164,19 @@ private:
 
         assert(getQueueWindowSize() > 0);
         assert(getQueueWindowSize() <= MAX_INPUT_QUEUE_SIZE);
-        assert(getHeartbeatInput()->duration() > milliseconds(0));
+        assert(getHeartbeatInput().duration() > milliseconds(0));
 
         const auto heartbeatInput  = getHeartbeatInput();
         const auto queueWindowSize = getQueueWindowSize();
 
-        auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput->duration());
+        auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput.duration());
 
         auto next = steady_clock::now();
 
         while (running())
         {
             auto startTime = steady_clock::now();
-            mMachine.execute(store, *heartbeatInput);
+            mMachine.execute(store, heartbeatInput);
             auto endTime = steady_clock::now();
             auto dur     = duration_cast<duration<double>>(endTime - startTime);
             if (dur >= heartbeatDur)
@@ -284,14 +186,15 @@ private:
             }
             else
             {
-                next = startTime + heartbeatInput->duration();
+                next = startTime + heartbeatInput.duration();
                 if (!mInputBuffer.empty())
                 {
-                    auto                   now        = steady_clock::now();
-                    std::shared_ptr<Input> nextViable = nullptr;
+                    auto now = steady_clock::now();
+
+                    typename Inputs::TypesVariant nextViable;
                     while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
                     {
-                        mMachine.execute(store, *nextViable);
+                        mMachine.execute(store, nextViable);
                         now = steady_clock::now();
                     }
                 }
@@ -300,7 +203,7 @@ private:
         }
     }
 
-    bool getNextViableInput(std::shared_ptr<Input> nextViable, const std::chrono::duration<double> timeLimit)
+    bool getNextViableInput(Inputs::TypesVariant& nextViable, const std::chrono::duration<double> timeLimit)
     {
         if (timeLimit < std::chrono::duration<double>(0))
         {
@@ -311,16 +214,16 @@ private:
         uint8_t drainIdx        = 0;
         uint8_t nextIdx         = -1;
 
-        std::vector<std::shared_ptr<Input>> nextCandidates;
+        std::vector<typename Inputs::TypesVariant> nextCandidates;
 
-        bool fullyDrained = mInputBuffer.drainUntil([&](std::shared_ptr<Input>&& v) {
-            std::shared_ptr<Input> input = std::move(v);
+        bool fullyDrained = mInputBuffer.drainUntil([&](typename Inputs::TypesVariant&& v) {
+            typename Inputs::TypesVariant input = std::move(v);
             nextCandidates.push_back(input);
-            if (std::chrono::duration_cast<std::chrono::duration<double>>(input->duration()) <= timeLimit)
+            if (std::chrono::duration_cast<std::chrono::duration<double>>(input.duration()) <= timeLimit)
             {
-                if (input->priority() < highestPriority)
+                if (input.priority() < highestPriority)
                 {
-                    highestPriority = input->priority();
+                    highestPriority = input.priority();
                     nextIdx         = drainIdx;
                 }
             }
