@@ -30,6 +30,18 @@ MicroService creation process: ^^^^ move to README
 - Optionally define public functions that add Inputs to mInputBuffer (the only accessible member variable). Can set up
 in the virtual setup() function that runs at initialization (e.g., initializing and binding subscribers to callback
 functions).
+
+PURPOSE
+- Eliminate side effects within a microservice
+- Ensure that all developer logic is contained within highly testable pure functions in the form of state machine definitions
+- Make illegal states unrepresentable and force the microservice developer to:
+  - consider every corner case from outside inputs
+  - partition functionality responsibly in order to keep the FSMs tractable
+- Impose time limits on every action the microservice takes
+
+GOTCHAS (^^^^TODO)
+- Right now the time limits are not strictly enforced--should they be?
+- Are we sure that a developer cannot introduce side effects?
 */
 
 namespace services
@@ -67,6 +79,7 @@ public:
             return;
         }
 
+        // There is no need for the store to be lock-protected because it is only accessible by the main thread.
         Store store;
 
         initStore(store);
@@ -101,16 +114,17 @@ public:
     }
 
 protected:
-    virtual const Inputs::Heartbeat getHeartbeatInput() const = 0;
+    virtual const Inputs::Heartbeat getHeartbeatInput() const = 0; // ^^^^ TODO make this no longer virtual as it is now unambiguous. make it private
 
-    virtual void          setup() {}
+    virtual void          setup() {} // ^^^^ TODO superseded by initStore? Aside from input constructors, a developer has no way of touching MicroService class variables--only the store
     virtual void          initStore(Store& store) {}
-    virtual void          preStop() {}
+    virtual void          preStop() {} // ^^^^ TODO necessary? Aside from input constructors, a developer has no way of touching MicroService class variables--only the store
     virtual const uint8_t getQueueWindowSize() const
     {
-        return 5;
+        return 5; // ^^^^ TODO assert that it's > 0 and <= max queue size...can we make this a constexpr with static asserts? BETTER YET, can we accomplish all that by making this ANOTHER template parameter??
     }
 
+    // ^^^^ TODO Aside from the argument that maybe a developer would want to provision some state outside if the store to provide a more sophisticated (?) front door to inputs from dependent microservices, what's stopping us from just making this function public and the sole interface into the service (and also just putting the semaphore stuff in here)?
     void addInputToQueue(Inputs::TypesVariant&& input)
     {
         mInputBuffer.push_back(std::move(input));
@@ -123,6 +137,7 @@ private:
         template<typename InputType>
         void execute(Store& store, const InputType& input)
         {
+            // TODO this is where the nexus of input, state, and store recording and logging can be
             const size_t nextState = mStates.runOnActiveState([this, &store, &input](auto& state) -> size_t {
                 using S = typename std::decay<decltype(state)>::type;
                 using I = InputType::DerivedType;
@@ -181,7 +196,7 @@ private:
             auto dur     = duration_cast<duration<double>>(endTime - startTime);
             if (dur >= heartbeatDur)
             {
-                // TODO report a warning
+                // TODO report a warning...make this an assert??
                 continue;
             }
             else
@@ -202,7 +217,12 @@ private:
             }
         }
     }
+    
+    // TODO there needs to be am observable metric / warning for if the input queue is growing in size or if it is full
+    // What happens if if's full, again?
+    // ^^^^ TODO make this semaphore-based so that the input queue is not allowed to get full, and make the max queue size a class template parameter instead of a compiler def.
 
+    // Find the highest priority input within getQueueWindowSize() for which we still have enough time to wait on the current service tick
     bool getNextViableInput(Inputs::TypesVariant& nextViable, const std::chrono::duration<double> timeLimit)
     {
         if (timeLimit < std::chrono::duration<double>(0))
