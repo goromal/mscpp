@@ -7,18 +7,19 @@ namespace services
 template<class T>
 struct Input
 {
-    using DerivedType = T;
+    using DerivedType = T; // ^^^^ TODO needed? why else would we need CRTP?
 
     virtual const uint8_t                   priority() const = 0;
     virtual const std::chrono::milliseconds duration() const = 0;
 };
 
 template<typename HeartbeatInput, typename... Inputs>
-class InputSet
+class InputSet : Inputs...
 {
 public:
-    using Heartbeat    = HeartbeatInput;
-    using TypesVariant = std::variant<HeartbeatInput, Inputs...>;
+    using Heartbeat     = HeartbeatInput;
+    using TypesVariant  = std::variant<HeartbeatInput, Inputs...>;
+    using GenericInputs = __type_list<Inputs...>;
 };
 
 } // namespace services

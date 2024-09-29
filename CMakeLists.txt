@@ -3,7 +3,14 @@ cmake_minimum_required (VERSION 3.16)
 set(PROJ_NAME mscpp)
 project(${PROJ_NAME})
 
+# message("Your C++ compiler supports these C++ features:")
+# foreach(i ${CMAKE_CXX_COMPILE_FEATURES})
+#   message("${i}")
+# endforeach()
+
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
                              -pthread")
 

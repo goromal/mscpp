@@ -33,7 +33,8 @@ functions).
 
 PURPOSE
 - Eliminate side effects within a microservice
-- Ensure that all developer logic is contained within highly testable pure functions in the form of state machine definitions
+- Ensure that all developer logic is contained within highly testable pure functions in the form of state machine
+definitions
 - Make illegal states unrepresentable and force the microservice developer to:
   - consider every corner case from outside inputs
   - partition functionality responsibly in order to keep the FSMs tractable
@@ -114,17 +115,24 @@ public:
     }
 
 protected:
-    virtual const Inputs::Heartbeat getHeartbeatInput() const = 0; // ^^^^ TODO make this no longer virtual as it is now unambiguous. make it private
+    virtual const Inputs::Heartbeat
+    getHeartbeatInput() const = 0; // ^^^^ TODO make this no longer virtual as it is now unambiguous. make it private
 
-    virtual void          setup() {} // ^^^^ TODO superseded by initStore? Aside from input constructors, a developer has no way of touching MicroService class variables--only the store
-    virtual void          initStore(Store& store) {}
-    virtual void          preStop() {} // ^^^^ TODO necessary? Aside from input constructors, a developer has no way of touching MicroService class variables--only the store
+    virtual void setup() {} // ^^^^ TODO superseded by initStore? Aside from input constructors, a developer has no way
+                            // of touching MicroService class variables--only the store
+    virtual void initStore(Store& store) {}
+    virtual void preStop() {} // ^^^^ TODO necessary? Aside from input constructors, a developer has no way of touching
+                              // MicroService class variables--only the store
     virtual const uint8_t getQueueWindowSize() const
     {
-        return 5; // ^^^^ TODO assert that it's > 0 and <= max queue size...can we make this a constexpr with static asserts? BETTER YET, can we accomplish all that by making this ANOTHER template parameter??
+        return 5; // ^^^^ TODO assert that it's > 0 and <= max queue size...can we make this a constexpr with static
+                  // asserts? BETTER YET, can we accomplish all that by making this ANOTHER template parameter??
     }
 
-    // ^^^^ TODO Aside from the argument that maybe a developer would want to provision some state outside if the store to provide a more sophisticated (?) front door to inputs from dependent microservices, what's stopping us from just making this function public and the sole interface into the service (and also just putting the semaphore stuff in here)?
+    // ^^^^ TODO Aside from the argument that maybe a developer would want to provision some state outside if the store
+    // to provide a more sophisticated (?) front door to inputs from dependent microservices, what's stopping us from
+    // just making this function public and the sole interface into the service (and also just putting the semaphore
+    // stuff in here)?
     void addInputToQueue(Inputs::TypesVariant&& input)
     {
         mInputBuffer.push_back(std::move(input));
@@ -173,6 +181,22 @@ private:
 
     __threadsafe_circular_buffer<typename Inputs::TypesVariant> mInputBuffer{MAX_INPUT_QUEUE_SIZE};
 
+    template<typename... InputOptions>
+    void
+    applyApplicableInput(Store& store, const typename Inputs::TypesVariant& inputVariant, __type_list<InputOptions...>)
+    {
+        ((std::holds_alternative<InputOptions>(inputVariant)
+              ? (mMachine.execute(store, std::get<InputOptions>(inputVariant)))
+              : void()),
+         ...);
+    }
+
+    template<typename T>
+    void applyApplicableInputWrapper(Store& store, const typename Inputs::TypesVariant& inputVariant)
+    {
+        applyApplicableInput(store, inputVariant, T{});
+    }
+
     void mainLoop(Store store)
     {
         using namespace std::chrono;
@@ -206,10 +230,22 @@ private:
                 {
                     auto now = steady_clock::now();
 
-                    typename Inputs::TypesVariant nextViable;
+                    typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
                     while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
                     {
-                        mMachine.execute(store, nextViable);
+                        // ^^^^ ^^^^
+                        // https://stackoverflow.com/questions/7230621/how-can-i-iterate-over-a-packed-variadic-template-argument-list
+                        // OR
+                        // https://stackoverflow.com/questions/36526400/is-there-a-way-to-make-a-function-return-a-typename
+                        /*
+                        template<typename… Ts>
+                        void iterate() {
+                            (do_something<Ts>(),…);
+                        }
+                        */
+                        // const auto input = std::visit([](auto&& inp) -> decltype(auto) { return inp; }, nextViable);
+                        // mMachine.execute(store, input);
+                        applyApplicableInputWrapper<typename Inputs::GenericInputs>(store, nextViable);
                         now = steady_clock::now();
                     }
                 }
@@ -217,15 +253,18 @@ private:
             }
         }
     }
-    
+
     // TODO there needs to be am observable metric / warning for if the input queue is growing in size or if it is full
     // What happens if if's full, again?
-    // ^^^^ TODO make this semaphore-based so that the input queue is not allowed to get full, and make the max queue size a class template parameter instead of a compiler def.
+    // ^^^^ TODO make this semaphore-based so that the input queue is not allowed to get full, and make the max queue
+    // size a class template parameter instead of a compiler def.
 
-    // Find the highest priority input within getQueueWindowSize() for which we still have enough time to wait on the current service tick
+    // Find the highest priority input within getQueueWindowSize() for which we still have enough time to wait on the
+    // current service tick
     bool getNextViableInput(Inputs::TypesVariant& nextViable, const std::chrono::duration<double> timeLimit)
     {
-        if (timeLimit < std::chrono::duration<double>(0))
+        using namespace std::chrono;
+        if (timeLimit < duration<double>(0))
         {
             return false;
         }
@@ -239,11 +278,14 @@ private:
         bool fullyDrained = mInputBuffer.drainUntil([&](typename Inputs::TypesVariant&& v) {
             typename Inputs::TypesVariant input = std::move(v);
             nextCandidates.push_back(input);
-            if (std::chrono::duration_cast<std::chrono::duration<double>>(input.duration()) <= timeLimit)
+            const milliseconds inputDuration =
+                std::visit([](auto&& inp) -> milliseconds { return inp.duration(); }, input);
+            if (duration_cast<duration<double>>(inputDuration) <= timeLimit)
             {
-                if (input.priority() < highestPriority)
+                const uint8_t inputPriority = std::visit([](auto&& inp) -> uint8_t { return inp.priority(); }, input);
+                if (inputPriority < highestPriority)
                 {
-                    highestPriority = input.priority();
+                    highestPriority = inputPriority;
                     nextIdx         = drainIdx;
                 }
             }
