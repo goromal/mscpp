@@ -25,6 +25,7 @@ definitions
 - Impose time limits on every action the microservice takes
 
 GOTCHAS
+- With the input system, how does a ms get an ACK from another ms? ^^^^ TODO
 - Right now the time limits are not strictly enforced--should they be? ^^^^ TODO
 - A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
 */
