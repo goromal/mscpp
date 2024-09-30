@@ -7,12 +7,16 @@ const size_t InitStateA::stateIndex()
 
 const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i)
 {
+    s.state = "init";
+    s.input = "heartbeat";
     universalReportStep(s);
     return index();
 }
 
 const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i)
 {
+    s.state = "init";
+    s.input = "increment";
     s.counter++;
     universalReportStep(s);
     return index();
@@ -20,6 +24,8 @@ const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const Incremen
 
 const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i)
 {
+    s.state = "init";
+    s.input = "transition";
     universalReportStep(s);
     return i.state();
 }
@@ -31,12 +37,16 @@ const size_t RunningStateA::stateIndex()
 
 const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i)
 {
+    s.state = "running";
+    s.input = "heartbeat";
     universalReportStep(s);
     return index();
 }
 
 const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i)
 {
+    s.state = "running";
+    s.input = "increment";
     s.counter++;
     universalReportStep(s);
     return index();
@@ -44,6 +54,8 @@ const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const Incre
 
 const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i)
 {
+    s.state = "running";
+    s.input = "transition";
     universalReportStep(s);
     return i.state();
 }
@@ -55,12 +67,16 @@ const size_t StoppedStateA::stateIndex()
 
 const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i)
 {
+    s.state = "stopped";
+    s.input = "heartbeat";
     universalReportStep(s);
     return index();
 }
 
 const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i)
 {
+    s.state = "stopped";
+    s.input = "increment";
     s.counter++;
     universalReportStep(s);
     return index();
@@ -68,6 +84,8 @@ const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const Incre
 
 const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i)
 {
+    s.state = "stopped";
+    s.input = "transition";
     universalReportStep(s);
     return i.state();
 }

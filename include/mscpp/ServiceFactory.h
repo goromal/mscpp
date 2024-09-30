@@ -42,7 +42,7 @@ public:
         stop();
     }
 
-    ServiceFactory(const ServiceFactory&) = delete;
+    ServiceFactory(const ServiceFactory&)            = delete;
     ServiceFactory& operator=(const ServiceFactory&) = delete;
 
     template<typename T>
@@ -124,7 +124,7 @@ private:
     {
         typename T::Container container{__handle_later{}};
         populateServices<T, typename T::Container, MicroServices...>(container, __place_holder<MicroServices>()...);
-        __instance_wrapper<T>::setInstance(std::make_shared<T>(container));
+        __instance_wrapper<T>::setInstance(std::make_shared<T>(container)); // ^^^^ ^^^^ why container?
     }
 
     template<typename O, typename C, typename T, typename... Rest>

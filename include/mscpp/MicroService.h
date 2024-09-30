@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <thread>
 #include <vector>
+#include <iostream> // ^^^^ ^^^^ TODO DELETE
 
 #include "internal/utils.h"
 
@@ -52,7 +53,10 @@ template<typename Store, typename ContainerType, typename States, typename Input
 class MicroService
 {
 public:
-    MicroService()
+    using Container = ContainerType;
+
+    MicroService() {}
+    MicroService(const Container& container) : mMachine(container)
     {
         setup();
     }
@@ -63,8 +67,6 @@ public:
             stop();
         }
     }
-
-    using Container = ContainerType;
 
     MicroService(const MicroService&)            = delete;
     MicroService& operator=(const MicroService&) = delete;
@@ -142,6 +144,9 @@ private:
     class FiniteStateMachine
     {
     public:
+        FiniteStateMachine() = delete;
+        FiniteStateMachine(const Container& container) : mContainer{container} {}
+
         template<typename InputType>
         void execute(Store& store, const InputType& input)
         {
@@ -191,13 +196,6 @@ private:
          ...);
     }
 
-    template<typename T>
-    void applyApplicableInputWrapper(Store& store, const typename Inputs::TypesVariant& inputVariant)
-    {
-        // ^^^^ TODO this function probably doesn't have to exist
-        applyApplicableInput(store, inputVariant, T{});
-    }
-
     void mainLoop(Store store)
     {
         using namespace std::chrono;
@@ -209,50 +207,48 @@ private:
         const auto heartbeatInput  = getHeartbeatInput();
         const auto queueWindowSize = getQueueWindowSize();
 
-        auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput.duration());
+        const auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput.duration());
 
-        auto next = steady_clock::now();
+        // auto next = steady_clock::now();
 
         while (running())
         {
             auto startTime = steady_clock::now();
+            auto next      = startTime + heartbeatDur;
             mMachine.execute(store, heartbeatInput);
             auto endTime = steady_clock::now();
             auto dur     = duration_cast<duration<double>>(endTime - startTime);
+            std::cout << "startloop" << std::endl;
             if (dur >= heartbeatDur)
             {
                 // TODO report a warning...make this an assert??
+                std::cout << "WARN" << std::endl;
                 continue;
             }
-            else
-            {
-                next = startTime + heartbeatInput.duration();
-                if (!mInputBuffer.empty())
-                {
-                    auto now = steady_clock::now();
 
-                    typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
-                    while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
-                    {
-                        // ^^^^ ^^^^
-                        // https://stackoverflow.com/questions/7230621/how-can-i-iterate-over-a-packed-variadic-template-argument-list
-                        // OR
-                        // https://stackoverflow.com/questions/36526400/is-there-a-way-to-make-a-function-return-a-typename
-                        /*
-                        template<typename… Ts>
-                        void iterate() {
-                            (do_something<Ts>(),…);
-                        }
-                        */
-                        // const auto input = std::visit([](auto&& inp) -> decltype(auto) { return inp; }, nextViable);
-                        // mMachine.execute(store, input);
-                        applyApplicableInputWrapper<typename Inputs::GenericInputs>(store, nextViable);
-                        now = steady_clock::now();
-                    }
-                }
-                std::this_thread::sleep_until(next);
+            // next = startTime + heartbeatInput.duration();
+            std::cout << "still going" << std::endl;
+            // if (!mInputBuffer.empty())
+            // {
+            auto now = steady_clock::now();
+
+            typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
+            while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
+            {
+                std::cout << "while..." << std::endl;
+                applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
+                std::cout << "...done" << std::endl;
+                now = steady_clock::now();
             }
+            // }
+
+            std::cout << "start_sleeping" << std::endl;
+            std::this_thread::sleep_until(next);
+            std::cout << "stop_sleeping" << std::endl;
+
+            std::cout << "endloop" << std::endl;
         }
+        std::cout << "EXITED" << std::endl;
     }
 
     // TODO there needs to be am observable metric / warning for if the input queue is growing in size or if it is full
@@ -263,7 +259,7 @@ private:
     // Find the highest priority input within getQueueWindowSize() for which we still have enough time to wait on the
     // current service tick
     bool getNextViableInput(Inputs::TypesVariant& nextViable, const std::chrono::duration<double> timeLimit)
-    {
+    { // ^^^^ ^^^^ TODO this function should NOT block when the input queue is empty...
         using namespace std::chrono;
         if (timeLimit < duration<double>(0))
         {
@@ -296,7 +292,8 @@ private:
 
         for (uint8_t i = drainIdx; i > 0; i--)
         {
-            if (i - 1 != drainIdx)
+            std::cout << "drainIdx=" << static_cast<int>(drainIdx) << ", i=" << static_cast<int>(i) << std::endl;
+            if (i - 1 != nextIdx)
             {
                 mInputBuffer.push_front(nextCandidates[i - 1]);
             }
