@@ -25,28 +25,22 @@ struct StoreA
     unsigned int counter = 0;
 };
 
-struct InitStateA : public services::State<InitStateA>
+struct InitStateA : public services::State<InitStateA, 0>
 {
-    static const size_t stateIndex();
-
     const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
 };
 
-struct RunningStateA : public services::State<RunningStateA>
+struct RunningStateA : public services::State<RunningStateA, 1>
 {
-    static const size_t stateIndex();
-
     const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
 };
 
-struct StoppedStateA : public services::State<StoppedStateA>
+struct StoppedStateA : public services::State<StoppedStateA, 2>
 {
-    static const size_t stateIndex();
-
     const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
     const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
@@ -54,17 +48,11 @@ struct StoppedStateA : public services::State<StoppedStateA>
 
 using StatesA = services::StateSet<InitStateA, RunningStateA, StoppedStateA>;
 
-class ServiceA : public services::MicroService<StoreA, ContainerTypeA, StatesA, Inputs>
+using ServiceABase = services::MicroService<StoreA, ContainerTypeA, StatesA, Inputs>;
+
+class ServiceA : public ServiceABase
 {
 public:
-    ServiceA(const ContainerTypeA& container)
-        : services::MicroService<StoreA, ContainerTypeA, StatesA, Inputs>(container)
-    {
-    }
+    ServiceA(const ContainerTypeA& container) : ServiceABase(container) {}
     const std::string name() const override;
-    void              increment();
-    void              transition(const size_t& state);
-
-private:
-    const Inputs::Heartbeat getHeartbeatInput() const override;
 };

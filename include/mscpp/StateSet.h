@@ -4,12 +4,14 @@
 namespace services
 {
 
-template<class S>
+template<class S, size_t Index>
 struct State
 {
-    static const size_t index()
+    using DerivedType = S;
+
+    static constexpr size_t index()
     {
-        return S::stateIndex();
+        return Index;
     }
 };
 

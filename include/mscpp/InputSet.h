@@ -7,7 +7,7 @@ namespace services
 template<class T>
 struct Input
 {
-    using DerivedType = T; // ^^^^ TODO needed? why else would we need CRTP?
+    using DerivedType = T;
 
     virtual const uint8_t                   priority() const = 0;
     virtual const std::chrono::milliseconds duration() const = 0;

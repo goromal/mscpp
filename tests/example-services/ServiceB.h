@@ -16,10 +16,8 @@ struct StoreB
     unsigned int counter = 0;
 };
 
-struct InitStateB : public services::State<InitStateB>
+struct InitStateB : public services::State<InitStateB, 0>
 {
-    static const size_t stateIndex();
-
     const size_t step(StoreB& s, const ContainerTypeB& c, const HeartbeatInput& i);
     const size_t step(StoreB& s, const ContainerTypeB& c, const IncrementInput& i);
     const size_t step(StoreB& s, const ContainerTypeB& c, const TransitionInput& i);
@@ -27,15 +25,11 @@ struct InitStateB : public services::State<InitStateB>
 
 using StatesB = services::StateSet<InitStateB>;
 
-class ServiceB : public services::MicroService<StoreB, ContainerTypeB, StatesB, Inputs>
+using ServiceBBase = services::MicroService<StoreB, ContainerTypeB, StatesB, Inputs, 5, 100>;
+
+class ServiceB : public ServiceBBase
 {
 public:
-    ServiceB(const ContainerTypeB& container)
-        : services::MicroService<StoreB, ContainerTypeB, StatesB, Inputs>(container)
-    {
-    }
+    ServiceB(const ContainerTypeB& container) : ServiceBBase(container) {}
     const std::string name() const override;
-
-private:
-    const Inputs::Heartbeat getHeartbeatInput() const override;
 };

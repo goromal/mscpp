@@ -9,28 +9,11 @@
 #include <pthread.h>
 #include <thread>
 #include <vector>
-#include <iostream> // ^^^^ ^^^^ TODO DELETE
 
 #include "internal/utils.h"
 
-#define MAX_INPUT_QUEUE_SIZE 100
-
 /*
-MicroService creation process: ^^^^ move to README
-- Define Store struct
-- Define Container type = MicroServiceContainer<SiblingServices...>
-- Define Inputs, each inheriting from Input
-- Define States, each with accept/enter functions with args (Store& s, const Container& c, const [every input type]& i)
-- Declare MicroService<States, Inputs, Store, Container>
-- Override virtual functions:
-  - name() -> str
-  - getHeartbeatInput() -> specify the heartbeat input out of Inputs
-  - initStore() -> optionally initialize the store with non-default values
-  - preStop() -> optional clean-up
-  - getQueueWindowSize() -> optionally override queue window size
-- Optionally define public functions that add Inputs to mInputBuffer (the only accessible member variable). Can set up
-in the virtual setup() function that runs at initialization (e.g., initializing and binding subscribers to callback
-functions).
+TODO ^^^^ move to README
 
 PURPOSE
 - Eliminate side effects within a microservice
@@ -41,25 +24,27 @@ definitions
   - partition functionality responsibly in order to keep the FSMs tractable
 - Impose time limits on every action the microservice takes
 
-GOTCHAS (^^^^TODO)
-- Right now the time limits are not strictly enforced--should they be?
-- Are we sure that a developer cannot introduce side effects?
+GOTCHAS
+- Right now the time limits are not strictly enforced--should they be? ^^^^ TODO
+- A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
 */
 
 namespace services
 {
 
-template<typename Store, typename ContainerType, typename States, typename Inputs>
+template<typename Store,
+         typename ContainerType,
+         typename States,
+         typename Inputs,
+         size_t InputWindow = 5,
+         size_t MaxInputs   = 100>
 class MicroService
 {
 public:
     using Container = ContainerType;
 
     MicroService() {}
-    MicroService(const Container& container) : mMachine(container)
-    {
-        setup();
-    }
+    MicroService(const Container& container) : mMachine(container) {}
     ~MicroService()
     {
         if (running())
@@ -74,6 +59,12 @@ public:
     MicroService& operator=(MicroService&&)      = delete;
 
     virtual const std::string name() const = 0;
+
+    void sendInput(Inputs::TypesVariant&& input)
+    {
+        // ^^^^ TODO semaphore logic
+        mInputBuffer.push_back(std::move(input));
+    }
 
     void run()
     {
@@ -102,8 +93,6 @@ public:
             return;
         }
 
-        preStop();
-
         mRunning = false;
         if (mMainThread.joinable())
         {
@@ -117,28 +106,7 @@ public:
     }
 
 protected:
-    virtual const Inputs::Heartbeat
-    getHeartbeatInput() const = 0; // ^^^^ TODO make this no longer virtual as it is now unambiguous. make it private
-
-    virtual void setup() {} // ^^^^ TODO superseded by initStore? Aside from input constructors, a developer has no way
-                            // of touching MicroService class variables--only the store
     virtual void initStore(Store& store) {}
-    virtual void preStop() {} // ^^^^ TODO necessary? Aside from input constructors, a developer has no way of touching
-                              // MicroService class variables--only the store
-    virtual const uint8_t getQueueWindowSize() const
-    {
-        return 5; // ^^^^ TODO assert that it's > 0 and <= max queue size...can we make this a constexpr with static
-                  // asserts? BETTER YET, can we accomplish all that by making this ANOTHER template parameter??
-    }
-
-    // ^^^^ TODO Aside from the argument that maybe a developer would want to provision some state outside if the store
-    // to provide a more sophisticated (?) front door to inputs from dependent microservices, what's stopping us from
-    // just making this function public and the sole interface into the service (and also just putting the semaphore
-    // stuff in here)?
-    void addInputToQueue(Inputs::TypesVariant&& input)
-    {
-        mInputBuffer.push_back(std::move(input));
-    }
 
 private:
     class FiniteStateMachine
@@ -184,7 +152,12 @@ private:
     std::thread        mMainThread;
     std::atomic_bool   mRunning{false};
 
-    __threadsafe_circular_buffer<typename Inputs::TypesVariant> mInputBuffer{MAX_INPUT_QUEUE_SIZE};
+    __threadsafe_circular_buffer<typename Inputs::TypesVariant> mInputBuffer{MaxInputs};
+
+    const Inputs::Heartbeat getHeartbeatInput() const
+    {
+        return typename Inputs::Heartbeat();
+    }
 
     template<typename... InputOptions>
     void
@@ -200,55 +173,43 @@ private:
     {
         using namespace std::chrono;
 
-        assert(getQueueWindowSize() > 0);
-        assert(getQueueWindowSize() <= MAX_INPUT_QUEUE_SIZE);
-        assert(getHeartbeatInput().duration() > milliseconds(0));
+        static_assert(InputWindow > 0, "Input priority evaluation window size must be > 0");
+        static_assert(InputWindow <= MaxInputs,
+                      "Input priority evaluation window size must be <= max input queue size");
 
         const auto heartbeatInput  = getHeartbeatInput();
-        const auto queueWindowSize = getQueueWindowSize();
+        const auto queueWindowSize = InputWindow;
 
         const auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput.duration());
-
-        // auto next = steady_clock::now();
+        assert(heartbeatDur > milliseconds(0));
 
         while (running())
         {
             auto startTime = steady_clock::now();
             auto next      = startTime + heartbeatDur;
+
             mMachine.execute(store, heartbeatInput);
+
             auto endTime = steady_clock::now();
             auto dur     = duration_cast<duration<double>>(endTime - startTime);
-            std::cout << "startloop" << std::endl;
+
             if (dur >= heartbeatDur)
             {
-                // TODO report a warning...make this an assert??
-                std::cout << "WARN" << std::endl;
+                // ^^^^ TODO report a warning...make this an assert??
                 continue;
             }
 
-            // next = startTime + heartbeatInput.duration();
-            std::cout << "still going" << std::endl;
-            // if (!mInputBuffer.empty())
-            // {
             auto now = steady_clock::now();
 
             typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
             while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
             {
-                std::cout << "while..." << std::endl;
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
-                std::cout << "...done" << std::endl;
                 now = steady_clock::now();
             }
-            // }
 
-            std::cout << "start_sleeping" << std::endl;
             std::this_thread::sleep_until(next);
-            std::cout << "stop_sleeping" << std::endl;
-
-            std::cout << "endloop" << std::endl;
         }
-        std::cout << "EXITED" << std::endl;
     }
 
     // TODO there needs to be am observable metric / warning for if the input queue is growing in size or if it is full
@@ -256,10 +217,11 @@ private:
     // ^^^^ TODO make this semaphore-based so that the input queue is not allowed to get full, and make the max queue
     // size a class template parameter instead of a compiler def.
 
-    // Find the highest priority input within getQueueWindowSize() for which we still have enough time to wait on the
-    // current service tick
+    // Find the highest priority input within InputWindow for which we still have enough time to wait on the
+    // current service tick.
+    // This function should NOT block when the input queue is empty, as it's being called in the main thread.
     bool getNextViableInput(Inputs::TypesVariant& nextViable, const std::chrono::duration<double> timeLimit)
-    { // ^^^^ ^^^^ TODO this function should NOT block when the input queue is empty...
+    {
         using namespace std::chrono;
         if (timeLimit < duration<double>(0))
         {
@@ -272,37 +234,44 @@ private:
 
         std::vector<typename Inputs::TypesVariant> nextCandidates;
 
-        bool fullyDrained = mInputBuffer.drainUntil([&](typename Inputs::TypesVariant&& v) {
-            typename Inputs::TypesVariant input = std::move(v);
-            nextCandidates.push_back(input);
-            const milliseconds inputDuration =
-                std::visit([](auto&& inp) -> milliseconds { return inp.duration(); }, input);
-            if (duration_cast<duration<double>>(inputDuration) <= timeLimit)
-            {
-                const uint8_t inputPriority = std::visit([](auto&& inp) -> uint8_t { return inp.priority(); }, input);
-                if (inputPriority < highestPriority)
+        if (!mInputBuffer.empty())
+        {
+            bool fullyDrained = mInputBuffer.drainUntil([&](typename Inputs::TypesVariant&& v) {
+                typename Inputs::TypesVariant input = std::move(v);
+                nextCandidates.push_back(input);
+                const milliseconds inputDuration =
+                    std::visit([](auto&& inp) -> milliseconds { return inp.duration(); }, input);
+                if (duration_cast<duration<double>>(inputDuration) <= timeLimit)
                 {
-                    highestPriority = inputPriority;
-                    nextIdx         = drainIdx;
+                    const uint8_t inputPriority =
+                        std::visit([](auto&& inp) -> uint8_t { return inp.priority(); }, input);
+                    if (inputPriority < highestPriority)
+                    {
+                        highestPriority = inputPriority;
+                        nextIdx         = drainIdx;
+                    }
+                }
+                drainIdx++;
+                return drainIdx < InputWindow;
+            });
+
+            for (uint8_t i = drainIdx; i > 0; i--)
+            {
+                if (i - 1 != nextIdx)
+                {
+                    mInputBuffer.push_front(nextCandidates[i - 1]);
                 }
             }
-            drainIdx++;
-            return drainIdx < getQueueWindowSize();
-        });
 
-        for (uint8_t i = drainIdx; i > 0; i--)
-        {
-            std::cout << "drainIdx=" << static_cast<int>(drainIdx) << ", i=" << static_cast<int>(i) << std::endl;
-            if (i - 1 != nextIdx)
+            if (fullyDrained && nextIdx >= 0)
             {
-                mInputBuffer.push_front(nextCandidates[i - 1]);
+                nextViable = nextCandidates[nextIdx];
+                return true;
             }
-        }
-
-        if (fullyDrained && nextIdx >= 0)
-        {
-            nextViable = nextCandidates[nextIdx];
-            return true;
+            else
+            {
+                return false;
+            }
         }
         else
         {

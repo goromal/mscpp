@@ -7,7 +7,7 @@ const uint8_t HeartbeatInput::priority() const
 
 const std::chrono::milliseconds HeartbeatInput::duration() const
 {
-    return std::chrono::milliseconds(200); // ^^^^ TODO 150
+    return std::chrono::milliseconds(100);
 }
 
 const uint8_t IncrementInput::priority() const
