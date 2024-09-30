@@ -194,6 +194,7 @@ private:
     template<typename T>
     void applyApplicableInputWrapper(Store& store, const typename Inputs::TypesVariant& inputVariant)
     {
+        // ^^^^ TODO this function probably doesn't have to exist
         applyApplicableInput(store, inputVariant, T{});
     }
 
