@@ -22,6 +22,7 @@ jobs:
         git config --global url."https://github.com/".insteadOf ssh://git@github.com/
     - run: export NIXPKGS_ALLOW_UNFREE=1 && nix-build -E 'with (import (fetchTarball "https://github.com/goromal/anixpkgs/archive/refs/heads/master.tar.gz") {}); mscpp.override { pkg-src = lib.cleanSource ./.; }'
   thorough-tests:
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - uses: cachix/install-nix-action@v20
@@ -35,6 +36,7 @@ jobs:
         git config --global url."https://github.com/".insteadOf ssh://git@github.com/
     - run: export NIXPKGS_ALLOW_UNFREE=1 && nix-shell --run "cpp-helper challenge all"
   local-tests:
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - uses: cachix/install-nix-action@v20
