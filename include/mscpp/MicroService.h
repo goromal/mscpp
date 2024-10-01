@@ -25,7 +25,9 @@ definitions
 - Impose time limits on every action the microservice takes
 
 GOTCHAS
-- With the input system, how does a ms get an ACK from another ms? ^^^^ TODO
+- With the input system, how does a ms get an ACK from another ms? ^^^^ TODO add read-only store getter and use for unit
+test
+                                                                   ^^^^ TODO look into using FUTURES
 - Right now the time limits are not strictly enforced--should they be? ^^^^ TODO
 - A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
 */
@@ -205,6 +207,8 @@ private:
             typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
             while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
             {
+                // ^^^^ TODO if mInputQueue becomes non-empty after first checking, then it will be missed. In an outer
+                // while loop, keep running this loop until time is up instead of sleeping until next
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
                 now = steady_clock::now();
             }

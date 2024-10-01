@@ -1,7 +1,6 @@
 let
   pkgs = import (fetchTarball
-    # ("https://github.com/goromal/anixpkgs/archive/refs/tags/v6.5.9.tar.gz"))
-    ("https://github.com/goromal/anixpkgs/archive/refs/heads/dev/cpp-sanitizers.tar.gz"))
+    ("https://github.com/goromal/anixpkgs/archive/refs/tags/v6.5.10.tar.gz"))
     { };
 in with pkgs;
 mkShell {
