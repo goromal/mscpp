@@ -34,7 +34,9 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - run: >
         git config --global url."https://github.com/".insteadOf ssh://git@github.com/
-    - run: export NIXPKGS_ALLOW_UNFREE=1 && nix-shell --run "cpp-helper challenge all || false"
+    - run: >
+        export NIXPKGS_ALLOW_UNFREE=1 && nix-shell --run "cpp-helper challenge all"
+        [[ -f build/unit-tests ]] || false
   local-tests:
     runs-on: ubuntu-latest
     steps:
@@ -48,4 +50,6 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - run: >
         git config --global url."https://github.com/".insteadOf ssh://git@github.com/
-    - run: export NIXPKGS_ALLOW_UNFREE=1 && nix-shell --run "cpp-helper make all || false"
+    - run: >
+        export NIXPKGS_ALLOW_UNFREE=1 && nix-shell --run "cpp-helper make all"
+        [[ -f build/unit-tests ]] || false
