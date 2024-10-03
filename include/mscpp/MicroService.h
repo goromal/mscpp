@@ -8,6 +8,7 @@
 #include <mutex>
 #include <pthread.h>
 #include <thread>
+#include <future>
 #include <vector>
 
 #include "internal/utils.h"
@@ -27,6 +28,7 @@ definitions
 
 GOTCHAS
 - With the input system, how does a ms get an ACK from another ms? ^^^^ TODO look into using FUTURES
+  ^^^^ TODO introduce Output along with Input--are they always paired together?
 - A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
 
 
