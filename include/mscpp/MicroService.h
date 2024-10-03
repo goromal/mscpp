@@ -23,12 +23,10 @@ definitions
   - consider every corner case from outside inputs
   - partition functionality responsibly in order to keep the FSMs tractable
 - Impose time limits on every action the microservice takes
+- Eliminate the need for locking the store (in fact, DO NOT lock it)
 
 GOTCHAS
-- With the input system, how does a ms get an ACK from another ms? ^^^^ TODO add read-only store getter and use for unit
-test
-                                                                   ^^^^ TODO look into using FUTURES
-- Right now the time limits are not strictly enforced--should they be? ^^^^ TODO
+- With the input system, how does a ms get an ACK from another ms? ^^^^ TODO look into using FUTURES
 - A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
 */
 
@@ -77,15 +75,16 @@ public:
         }
 
         // There is no need for the store to be lock-protected because it is only accessible by the main thread.
-        Store store;
-
-        initStore(store);
+        {
+            std::scoped_lock lock(mMutex);
+            initStore(mStore);
+        }
 
         mRunning    = true;
-        mMainThread = std::thread([this, store]() {
+        mMainThread = std::thread([this]() {
             static constexpr int maxNameLength{15};
             pthread_setname_np(pthread_self(), this->name().substr(0, maxNameLength).c_str());
-            mainLoop(store);
+            mainLoop(this->mStore);
         });
     }
 
@@ -106,6 +105,12 @@ public:
     bool running()
     {
         return mRunning.load();
+    }
+
+    const Store& readStore()
+    {
+        std::scoped_lock lock(mMutex);
+        return mStore;
     }
 
 protected:
@@ -151,6 +156,8 @@ private:
         }
     };
 
+    std::mutex         mMutex;
+    Store              mStore;
     FiniteStateMachine mMachine;
     std::thread        mMainThread;
     std::atomic_bool   mRunning{false};
@@ -172,7 +179,7 @@ private:
          ...);
     }
 
-    void mainLoop(Store store)
+    void mainLoop(Store& store)
     {
         using namespace std::chrono;
 
@@ -191,29 +198,29 @@ private:
             auto startTime = steady_clock::now();
             auto next      = startTime + heartbeatDur;
 
-            mMachine.execute(store, heartbeatInput);
+            {
+                std::scoped_lock lock(mMutex);
+                mMachine.execute(store, heartbeatInput);
+            }
 
             auto endTime = steady_clock::now();
             auto dur     = duration_cast<duration<double>>(endTime - startTime);
-
-            if (dur >= heartbeatDur)
-            {
-                // ^^^^ TODO report a warning...make this an assert??
-                continue;
-            }
+            assert(dur <= heartbeatDur);
 
             auto now = steady_clock::now();
 
             typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
-            while (getNextViableInput(nextViable, duration_cast<duration<double>>(next - now)))
+            std::chrono::milliseconds     nextDuration;
+            while (getNextViableInput(nextViable, nextDuration, duration_cast<duration<double>>(next - now)))
             {
-                // ^^^^ TODO if mInputQueue becomes non-empty after first checking, then it will be missed. In an outer
-                // while loop, keep running this loop until time is up instead of sleeping until next
+                startTime = steady_clock::now();
+                std::scoped_lock lock(mMutex);
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
+                endTime  = steady_clock::now();
+                auto dur = duration_cast<duration<double>>(endTime - startTime);
+                assert(dur <= nextDuration);
                 now = steady_clock::now();
             }
-
-            std::this_thread::sleep_until(next);
         }
     }
 
@@ -225,7 +232,9 @@ private:
     // Find the highest priority input within InputWindow for which we still have enough time to wait on the
     // current service tick.
     // This function should NOT block when the input queue is empty, as it's being called in the main thread.
-    bool getNextViableInput(Inputs::TypesVariant& nextViable, const std::chrono::duration<double> timeLimit)
+    bool getNextViableInput(Inputs::TypesVariant&               nextViable,
+                            std::chrono::milliseconds&          nextDuration,
+                            const std::chrono::duration<double> timeLimit)
     {
         using namespace std::chrono;
         if (timeLimit < duration<double>(0))
@@ -239,9 +248,8 @@ private:
 
         std::vector<typename Inputs::TypesVariant> nextCandidates;
 
-        if (!mInputBuffer.empty())
-        {
-            bool fullyDrained = mInputBuffer.drainUntil([&](typename Inputs::TypesVariant&& v) {
+        bool fullyDrained = mInputBuffer.timedDrainUntil(
+            [&](typename Inputs::TypesVariant&& v) {
                 typename Inputs::TypesVariant input = std::move(v);
                 nextCandidates.push_back(input);
                 const milliseconds inputDuration =
@@ -253,30 +261,27 @@ private:
                     if (inputPriority < highestPriority)
                     {
                         highestPriority = inputPriority;
+                        nextDuration    = inputDuration;
                         nextIdx         = drainIdx;
                     }
                 }
                 drainIdx++;
                 return drainIdx < InputWindow;
-            });
+            },
+            timeLimit);
 
-            for (uint8_t i = drainIdx; i > 0; i--)
+        for (uint8_t i = drainIdx; i > 0; i--)
+        {
+            if (i - 1 != nextIdx)
             {
-                if (i - 1 != nextIdx)
-                {
-                    mInputBuffer.push_front(nextCandidates[i - 1]);
-                }
+                mInputBuffer.push_front(nextCandidates[i - 1]);
             }
+        }
 
-            if (fullyDrained && nextIdx >= 0)
-            {
-                nextViable = nextCandidates[nextIdx];
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+        if (fullyDrained && nextIdx >= 0)
+        {
+            nextViable = nextCandidates[nextIdx];
+            return true;
         }
         else
         {

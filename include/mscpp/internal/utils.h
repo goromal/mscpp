@@ -207,6 +207,34 @@ public:
         return true;
     }
 
+    bool timedDrainUntil(std::function<bool(T&&)> checkFunc, const std::chrono::duration<double> timeLimit) noexcept
+    {
+        std::unique_lock<std::mutex> lock(mMutex);
+        if (mCondition.wait_for(lock, timeLimit, [=, this]() { return !this->mRunning || !this->mBuffer.empty(); }))
+        {
+            if (!this->mRunning)
+            {
+                lock.unlock();
+                return false;
+            }
+            while (!mBuffer.empty())
+            {
+                if (!checkFunc(std::move(mBuffer[0])))
+                {
+                    break;
+                }
+                mBuffer.pop_front();
+            }
+            lock.unlock();
+            return true;
+        }
+        else
+        {
+            lock.unlock();
+            return false;
+        }
+    }
+
     unsigned long size() noexcept
     {
         std::lock_guard<std::mutex> lock(mMutex);
