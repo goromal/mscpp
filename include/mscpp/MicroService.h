@@ -28,6 +28,45 @@ definitions
 GOTCHAS
 - With the input system, how does a ms get an ACK from another ms? ^^^^ TODO look into using FUTURES
 - A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
+
+
+#include <iostream>
+#include <thread>
+#include <future>
+
+// Function that sets a value in a promise
+void set_value(std::promise<int>& prom) {
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    prom.set_value(42);  // Set the value after some time
+}
+
+int main() {
+    std::promise<int> prom;          // Create a promise object
+    std::future<int> fut = prom.get_future();  // Get future from promise
+
+    // Launch a thread to set the value in the promise
+    std::thread t(set_value, std::ref(prom));
+
+    std::cout << "Waiting for the result..." << std::endl;
+
+    // Retrieve the value from the future (blocks until ready)
+    int value = fut.get();
+
+    std::cout << "The result is: " << value << std::endl;
+
+    t.join();  // Wait for the thread to finish
+
+    return 0;
+}
+
+std::promise:
+A std::promise allows you to set a value that will be delivered to the corresponding std::future. It can be used in one
+thread to provide data that will be consumed in another thread.
+
+std::future: It is obtained from a std::promise by
+calling promise.get_future(). It represents the result of the asynchronous computation and can be used to retrieve the
+value once it is set.
+
 */
 
 namespace services
@@ -209,7 +248,7 @@ private:
 
             auto now = steady_clock::now();
 
-            typename Inputs::TypesVariant nextViable; // ^^^^ TODO use move semantics in this chain
+            typename Inputs::TypesVariant nextViable;
             std::chrono::milliseconds     nextDuration;
             while (getNextViableInput(nextViable, nextDuration, duration_cast<duration<double>>(next - now)))
             {
