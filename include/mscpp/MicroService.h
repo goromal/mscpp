@@ -102,10 +102,10 @@ public:
 
     virtual const std::string name() const = 0;
 
-    void sendInput(Inputs::TypesVariant&& input)
+    void sendInput(const Inputs::TypesVariant& input)
     {
         // ^^^^ TODO semaphore logic
-        mInputBuffer.push_back(std::move(input));
+        mInputBuffer.push_back(input);
     }
 
     void run()
@@ -115,7 +115,6 @@ public:
             return;
         }
 
-        // There is no need for the store to be lock-protected because it is only accessible by the main thread.
         {
             std::scoped_lock lock(mMutex);
             initStore(mStore);
