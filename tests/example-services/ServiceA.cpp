@@ -1,6 +1,6 @@
 #include "ServiceA.h"
 
-const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i)
+const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i)
 {
     s.state = "init";
     s.input = "heartbeat";
@@ -8,7 +8,7 @@ const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const Heartbea
     return index();
 }
 
-const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i)
+const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, IncrementInput& i)
 {
     s.state = "init";
     s.input = "increment";
@@ -17,7 +17,7 @@ const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const Incremen
     return index();
 }
 
-const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i)
+const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, TransitionInput& i)
 {
     s.state = "init";
     s.input = "transition";
@@ -25,7 +25,7 @@ const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, const Transiti
     return i.state();
 }
 
-const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i)
+const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i)
 {
     s.state = "running";
     s.input = "heartbeat";
@@ -33,7 +33,7 @@ const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const Heart
     return index();
 }
 
-const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i)
+const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, IncrementInput& i)
 {
     s.state = "running";
     s.input = "increment";
@@ -42,7 +42,7 @@ const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const Incre
     return index();
 }
 
-const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i)
+const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, TransitionInput& i)
 {
     s.state = "running";
     s.input = "transition";
@@ -50,7 +50,7 @@ const size_t RunningStateA::step(StoreA& s, const ContainerTypeA& c, const Trans
     return i.state();
 }
 
-const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i)
+const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i)
 {
     s.state = "stopped";
     s.input = "heartbeat";
@@ -58,7 +58,7 @@ const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const Heart
     return index();
 }
 
-const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i)
+const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, IncrementInput& i)
 {
     s.state = "stopped";
     s.input = "increment";
@@ -67,7 +67,7 @@ const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const Incre
     return index();
 }
 
-const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i)
+const size_t StoppedStateA::step(StoreA& s, const ContainerTypeA& c, TransitionInput& i)
 {
     s.state = "stopped";
     s.input = "transition";

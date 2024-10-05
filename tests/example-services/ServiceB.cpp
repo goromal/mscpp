@@ -1,6 +1,6 @@
 #include "ServiceB.h"
 
-const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, const HeartbeatInput& i)
+const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, HeartbeatInput& i)
 {
     s.state = "init";
     s.input = "heartbeat";
@@ -25,14 +25,14 @@ const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, const Heartbea
     return InitStateB::index();
 }
 
-const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, const IncrementInput& i)
+const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, IncrementInput& i)
 {
     s.state = "init";
     s.input = "increment";
     return InitStateB::index();
 }
 
-const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, const TransitionInput& i)
+const size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, TransitionInput& i)
 {
     s.state = "init";
     s.input = "transition";

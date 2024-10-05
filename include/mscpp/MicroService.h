@@ -8,7 +8,6 @@
 #include <mutex>
 #include <pthread.h>
 #include <thread>
-#include <future>
 #include <vector>
 
 #include "internal/utils.h"
@@ -102,10 +101,10 @@ public:
 
     virtual const std::string name() const = 0;
 
-    void sendInput(const Inputs::TypesVariant& input)
+    void sendInput(Inputs::TypesVariant&& input)
     {
         // ^^^^ TODO semaphore logic
-        mInputBuffer.push_back(input);
+        mInputBuffer.push_back(std::move(input));
     }
 
     void run()
@@ -164,7 +163,7 @@ private:
         FiniteStateMachine(const Container& container) : mContainer{container} {}
 
         template<typename InputType>
-        void execute(Store& store, const InputType& input)
+        void execute(Store& store, InputType& input)
         {
             // TODO this is where the nexus of input, state, and store recording and logging can be
             const size_t nextState = mStates.runOnActiveState([this, &store, &input](auto& state) -> size_t {
@@ -183,7 +182,7 @@ private:
         template<typename S, typename I>
         using StepFuncSignature = decltype(std::declval<S>().step(std::declval<Store&>(),
                                                                   std::declval<const Container&>(),
-                                                                  std::declval<const I&>()));
+                                                                  std::declval<I&>()));
         template<typename S, typename I>
         static constexpr bool stepExists()
         {
@@ -210,8 +209,7 @@ private:
     }
 
     template<typename... InputOptions>
-    void
-    applyApplicableInput(Store& store, const typename Inputs::TypesVariant& inputVariant, __type_list<InputOptions...>)
+    void applyApplicableInput(Store& store, typename Inputs::TypesVariant& inputVariant, __type_list<InputOptions...>)
     {
         ((std::holds_alternative<InputOptions>(inputVariant)
               ? (mMachine.execute(store, std::get<InputOptions>(inputVariant)))
@@ -227,10 +225,8 @@ private:
         static_assert(InputWindow <= MaxInputs,
                       "Input priority evaluation window size must be <= max input queue size");
 
-        const auto heartbeatInput  = getHeartbeatInput();
-        const auto queueWindowSize = InputWindow;
-
-        const auto heartbeatDur = duration_cast<duration<double>>(heartbeatInput.duration());
+        auto       heartbeatInput = getHeartbeatInput();
+        const auto heartbeatDur   = duration_cast<duration<double>>(heartbeatInput.duration());
         assert(heartbeatDur > milliseconds(0));
 
         while (running())
@@ -290,14 +286,13 @@ private:
 
         bool fullyDrained = mInputBuffer.timedDrainUntil(
             [&](typename Inputs::TypesVariant&& v) {
-                typename Inputs::TypesVariant input = std::move(v);
-                nextCandidates.push_back(input);
+                nextCandidates.push_back(std::move(v));
                 const milliseconds inputDuration =
-                    std::visit([](auto&& inp) -> milliseconds { return inp.duration(); }, input);
+                    std::visit([](const auto& inp) -> milliseconds { return inp.duration(); }, nextCandidates.back());
                 if (duration_cast<duration<double>>(inputDuration) <= timeLimit)
                 {
                     const uint8_t inputPriority =
-                        std::visit([](auto&& inp) -> uint8_t { return inp.priority(); }, input);
+                        std::visit([](const auto& inp) -> uint8_t { return inp.priority(); }, nextCandidates.back());
                     if (inputPriority < highestPriority)
                     {
                         highestPriority = inputPriority;
@@ -314,13 +309,13 @@ private:
         {
             if (i - 1 != nextIdx)
             {
-                mInputBuffer.push_front(nextCandidates[i - 1]);
+                mInputBuffer.push_front(std::move(nextCandidates[i - 1]));
             }
         }
 
         if (fullyDrained && nextIdx >= 0)
         {
-            nextViable = nextCandidates[nextIdx];
+            nextViable = std::move(nextCandidates[nextIdx]);
             return true;
         }
         else

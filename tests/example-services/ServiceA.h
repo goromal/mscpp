@@ -27,23 +27,23 @@ struct StoreA
 
 struct InitStateA : public services::State<InitStateA, 0>
 {
-    const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
 };
 
 struct RunningStateA : public services::State<RunningStateA, 1>
 {
-    const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
 };
 
 struct StoppedStateA : public services::State<StoppedStateA, 2>
 {
-    const size_t step(StoreA& s, const ContainerTypeA& c, const HeartbeatInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, const IncrementInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, const TransitionInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
+    const size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
 };
 
 using StatesA = services::StateSet<InitStateA, RunningStateA, StoppedStateA>;
