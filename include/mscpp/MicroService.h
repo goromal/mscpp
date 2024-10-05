@@ -12,23 +12,6 @@
 
 #include "internal/utils.h"
 
-/*
-TODO ^^^^ move to README
-
-PURPOSE
-- Eliminate side effects within a microservice
-- Ensure that all developer logic is contained within highly testable pure functions in the form of state machine
-definitions
-- Make illegal states unrepresentable and force the microservice developer to:
-  - consider every corner case from outside inputs
-  - partition functionality responsibly in order to keep the FSMs tractable
-- Impose time limits on every action the microservice takes
-- Eliminate the need for locking the store (in fact, DO NOT lock it)
-
-GOTCHAS
-- A developer must stick to the virtual override functions and FSM definitions to avoid side effects.
-*/
-
 namespace services
 {
 
@@ -178,19 +161,18 @@ private:
 
     void mainLoop(Store& store)
     {
-        using namespace std::chrono;
-
         static_assert(InputWindow > 0, "Input priority evaluation window size must be > 0");
         static_assert(InputWindow <= MaxInputs,
                       "Input priority evaluation window size must be <= max input queue size");
 
         auto           heartbeatInput = getHeartbeatInput();
-        constexpr auto heartbeatDur   = duration_cast<duration<double>>(heartbeatInput.duration());
-        static_assert(heartbeatDur > milliseconds(0), "Heartbeat duration must be greater > 0");
+        constexpr auto heartbeatDur =
+            std::chrono::duration_cast<std::chrono::duration<double>>(heartbeatInput.duration());
+        static_assert(heartbeatDur > std::chrono::milliseconds(0), "Heartbeat duration must be greater > 0");
 
         while (running())
         {
-            auto startTime = steady_clock::now();
+            auto startTime = std::chrono::steady_clock::now();
             auto next      = startTime + heartbeatDur;
 
             {
@@ -198,41 +180,40 @@ private:
                 mMachine.execute(store, heartbeatInput);
             }
 
-            auto endTime = steady_clock::now();
-            auto dur     = duration_cast<duration<double>>(endTime - startTime);
+            auto endTime = std::chrono::steady_clock::now();
+            auto dur     = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
             assert(dur <= heartbeatDur);
 
-            auto now = steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
 
             typename Inputs::TypesVariant nextViable;
             std::chrono::milliseconds     nextDuration;
-            while (getNextViableInput(nextViable, nextDuration, duration_cast<duration<double>>(next - now)))
+            while (getNextViableInput(nextViable,
+                                      nextDuration,
+                                      std::chrono::duration_cast<std::chrono::duration<double>>(next - now)))
             {
-                startTime = steady_clock::now();
+                startTime = std::chrono::steady_clock::now();
                 std::scoped_lock lock(mMutex);
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
-                endTime  = steady_clock::now();
-                auto dur = duration_cast<duration<double>>(endTime - startTime);
+                endTime  = std::chrono::steady_clock::now();
+                auto dur = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
                 assert(dur <= nextDuration);
-                now = steady_clock::now();
+                now = std::chrono::steady_clock::now();
             }
         }
     }
 
-    // TODO there needs to be am observable metric / warning for if the input queue is growing in size or if it is full
-    // What happens if if's full, again?
-    // ^^^^ TODO make this semaphore-based so that the input queue is not allowed to get full, and make the max queue
-    // size a class template parameter instead of a compiler def.
+    // ^^^^ TODO semaphore-based so that the input queue is not allowed to get full. What happens if if's full?
 
     // Find the highest priority input within InputWindow for which we still have enough time to wait on the
     // current service tick.
     // This function should NOT block when the input queue is empty, as it's being called in the main thread.
+    // TODO: There should be an observable metric / warning for if the input queue is growing in size or if it is full.
     bool getNextViableInput(Inputs::TypesVariant&               nextViable,
                             std::chrono::milliseconds&          nextDuration,
                             const std::chrono::duration<double> timeLimit)
     {
-        using namespace std::chrono;
-        if (timeLimit < duration<double>(0))
+        if (timeLimit < std::chrono::duration<double>(0))
         {
             return false;
         }
@@ -246,9 +227,10 @@ private:
         bool fullyDrained = mInputBuffer.timedDrainUntil(
             [&](typename Inputs::TypesVariant&& v) {
                 nextCandidates.push_back(std::move(v));
-                const milliseconds inputDuration =
-                    std::visit([](const auto& inp) -> milliseconds { return inp.duration(); }, nextCandidates.back());
-                if (duration_cast<duration<double>>(inputDuration) <= timeLimit)
+                const std::chrono::milliseconds inputDuration =
+                    std::visit([](const auto& inp) -> std::chrono::milliseconds { return inp.duration(); },
+                               nextCandidates.back());
+                if (std::chrono::duration_cast<std::chrono::duration<double>>(inputDuration) <= timeLimit)
                 {
                     const uint8_t inputPriority =
                         std::visit([](const auto& inp) -> uint8_t { return inp.priority(); }, nextCandidates.back());
