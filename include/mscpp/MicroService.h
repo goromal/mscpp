@@ -107,7 +107,7 @@ private:
         template<typename InputType>
         void execute(Store& store, InputType& input)
         {
-            // TODO this is where the nexus of input, state, and store recording and logging can be
+            // TODO: This is where the nexus of input, state, and store recording and logging can be.
             const size_t nextState = mStates.runOnActiveState([this, &store, &input](auto& state) -> size_t {
                 using S = typename std::decay<decltype(state)>::type;
                 using I = InputType::DerivedType;

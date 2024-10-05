@@ -19,7 +19,7 @@ template<typename... States>
 class StateSet
 {
 public:
-    size_t                mActiveState = 0; // Init state is the first one in the template list
+    size_t                mActiveState = 0; // Init state is the first one in the template list.
     std::tuple<States...> mStates;
 
     template<typename T>
