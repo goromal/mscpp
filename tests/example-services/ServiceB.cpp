@@ -10,7 +10,7 @@ size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, HeartbeatInput&)
         s.state = "init-SEND_INCREMENT";
         IncrementInput input;
         auto           inputResult = input.getFuture();
-        c.get<ServiceA>()->sendInput(std::move(input));
+        assert(c.get<ServiceA>()->sendInput(std::move(input)));
         try
         {
             auto result = inputResult.get();
