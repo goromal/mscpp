@@ -4,30 +4,28 @@
 #include "mscpp/MicroService.h"
 #include "mscpp/InputSet.h"
 
-struct BooleanOutput
+struct EmptyResult
+{
+};
+
+struct BooleanResult
 {
     bool result;
 };
 
-struct HeartbeatInput : public services::Input<HeartbeatInput, services::EmptyOutput>
+struct HeartbeatInput : public services::Input<HeartbeatInput, EmptyResult, 1, 100>
 {
-    const uint8_t                   priority() const override;
-    const std::chrono::milliseconds duration() const override;
 };
 
-struct IncrementInput : public services::Input<IncrementInput, BooleanOutput>
+struct IncrementInput : public services::Input<IncrementInput, BooleanResult, 2, 5>
 {
-    const uint8_t                   priority() const override;
-    const std::chrono::milliseconds duration() const override;
 };
 
-struct TransitionInput : public services::Input<TransitionInput, BooleanOutput>
+struct TransitionInput : public services::Input<TransitionInput, BooleanResult, 2, 5>
 {
     TransitionInput(const size_t& state) : mState(state) {}
-    const uint8_t                   priority() const override;
-    const std::chrono::milliseconds duration() const override;
-    const size_t                    state() const;
-    size_t                          mState;
+    const size_t state() const;
+    size_t       mState;
 };
 
 using Inputs = services::InputSet<HeartbeatInput, IncrementInput, TransitionInput>;

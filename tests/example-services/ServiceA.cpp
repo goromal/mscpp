@@ -13,6 +13,7 @@ const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, IncrementInput
     s.state = "init";
     s.input = "increment";
     s.counter++;
+    i.setResult(BooleanResult{true});
     universalReportStep(s);
     return index();
 }
@@ -21,6 +22,7 @@ const size_t InitStateA::step(StoreA& s, const ContainerTypeA& c, TransitionInpu
 {
     s.state = "init";
     s.input = "transition";
+    i.setResult(services::ErrorResult{"For testing purposes, this failed."});
     universalReportStep(s);
     return i.state();
 }

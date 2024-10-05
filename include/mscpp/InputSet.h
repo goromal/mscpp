@@ -5,33 +5,35 @@
 namespace services
 {
 
-struct EmptyOutput
-{
-};
-
 struct ErrorResult
 {
     std::string errorMessage;
 };
 
-template<class T, class OutputType>
+template<class T, class ResultType, uint8_t PRIORITY, uint64_t DURATION_MILLIS>
 struct Input
 {
     using DerivedType = T;
-    using ResultType  = std::variant<ErrorResult, OutputType>;
+    using Result      = std::variant<ErrorResult, ResultType>;
 
-    std::promise<ResultType> promise;
-    std::future<ResultType>  getFuture()
+    std::promise<Result> promise;
+    std::future<Result>  getFuture()
     {
         return std::move(promise.get_future());
     }
-    void setPromise(ResultType&& result)
+    void setResult(Result&& result)
     {
         promise.set_value(std::move(result));
     }
 
-    virtual const uint8_t                   priority() const = 0;
-    virtual const std::chrono::milliseconds duration() const = 0;
+    constexpr uint8_t priority() const
+    {
+        return DURATION_MILLIS;
+    }
+    constexpr std::chrono::milliseconds duration() const
+    {
+        return std::chrono::milliseconds(DURATION_MILLIS);
+    }
 };
 
 template<typename HeartbeatInput, typename... Inputs>
