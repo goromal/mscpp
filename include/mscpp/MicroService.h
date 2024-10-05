@@ -174,7 +174,6 @@ private:
         {
             auto startTime = std::chrono::steady_clock::now();
             auto next      = startTime + heartbeatDur;
-
             {
                 std::scoped_lock lock(mMutex);
                 mMachine.execute(store, heartbeatInput);
