@@ -11,8 +11,8 @@
 template<typename StoreType>
 inline void universalReportStep(const StoreType& store)
 {
-    std::cout << "Service " << store.name << " is in state " << store.state << " with input " << store.input
-              << " and counter " << store.counter << std::endl;
+    // std::cout << "Service " << store.name << " is in state " << store.state << " with input " << store.input
+    //           << " and counter " << store.counter << std::endl;
 }
 
 using ContainerTypeA = services::MicroServiceContainer<>;

@@ -153,7 +153,7 @@ public:
     void push_back(T&& val) noexcept
     {
         {
-            std::lock_guard<std::mutex> lock(mMutex);
+            std::scoped_lock lock(mMutex);
             mBuffer.push_back(std::forward<T&&>(val));
         }
         mCondition.notify_one();
@@ -162,16 +162,44 @@ public:
     void push_back(const T& val) noexcept
     {
         {
-            std::lock_guard<std::mutex> lock(mMutex);
+            std::scoped_lock lock(mMutex);
             mBuffer.push_back(val);
         }
         mCondition.notify_one();
     }
 
+    bool push_back_if_not_full(T&& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_back(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
+    bool push_back_if_not_full(const T& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_back(val);
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
     void push_front(T&& val) noexcept
     {
         {
-            std::lock_guard<std::mutex> lock(mMutex);
+            std::scoped_lock lock(mMutex);
             mBuffer.push_front(std::forward<T&&>(val));
         }
         mCondition.notify_one();
@@ -180,10 +208,38 @@ public:
     void push_front(const T& val) noexcept
     {
         {
-            std::lock_guard<std::mutex> lock(mMutex);
+            std::scoped_lock lock(mMutex);
             mBuffer.push_front(val);
         }
         mCondition.notify_one();
+    }
+
+    bool push_front_if_not_full(T&& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_front(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
+    bool push_front_if_not_full(const T& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_front(val);
+        }
+        mCondition.notify_one();
+        return true;
     }
 
     bool drainUntil(std::function<bool(T&&)> checkFunc) noexcept
@@ -237,20 +293,20 @@ public:
 
     unsigned long size() noexcept
     {
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::scoped_lock lock(mMutex);
         return mBuffer.size();
     }
 
     void clear() noexcept
     {
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::scoped_lock lock(mMutex);
         mBuffer.clear();
     }
 
     void stop() noexcept
     {
         {
-            std::lock_guard<std::mutex> lock(mMutex);
+            std::scoped_lock lock(mMutex);
             mRunning = false;
         }
         mCondition.notify_all();
@@ -258,7 +314,7 @@ public:
 
     bool empty() noexcept
     {
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::scoped_lock lock(mMutex);
         return mBuffer.empty();
     }
 

@@ -43,10 +43,10 @@ public:
 
     virtual const std::string name() const = 0;
 
-    void sendInput(Inputs::TypesVariant&& input)
+    // Place an input on this services queue. Will return false if the queue is full, signaling to try again later.
+    bool sendInput(Inputs::TypesVariant&& input)
     {
-        // ^^^^ TODO semaphore logic
-        mInputBuffer.push_back(std::move(input));
+        return mInputBuffer.push_back_if_not_full(std::move(input));
     }
 
     void run()
@@ -203,11 +203,10 @@ private:
         }
     }
 
-    // ^^^^ TODO semaphore-based so that the input queue is not allowed to get full. What happens if if's full?
-
     // Find the highest priority input within InputWindow for which we still have enough time to wait on the
     // current service tick.
-    // This function should NOT block when the input queue is empty, as it's being called in the main thread.
+    // This function should NOT indefinitely block when the input queue is empty, as it's being called in the main
+    // thread. It should be beholden to timeLimit.
     // TODO: There should be an observable metric / warning for if the input queue is growing in size or if it is full.
     bool getNextViableInput(Inputs::TypesVariant&               nextViable,
                             std::chrono::milliseconds&          nextDuration,
