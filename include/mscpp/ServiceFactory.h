@@ -5,6 +5,9 @@
 #include "MicroServiceContainer.h"
 #include "internal/utils.h"
 
+namespace services
+{
+
 template<typename... Types>
 struct __factory_helper;
 
@@ -39,7 +42,7 @@ public:
         stop();
     }
 
-    ServiceFactory(const ServiceFactory&) = delete;
+    ServiceFactory(const ServiceFactory&)            = delete;
     ServiceFactory& operator=(const ServiceFactory&) = delete;
 
     template<typename T>
@@ -215,3 +218,5 @@ private:
         return get<T>()->running() || foundRunning;
     }
 };
+
+} // namespace services

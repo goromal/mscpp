@@ -1,5 +1,9 @@
 #pragma once
+#include <boost/circular_buffer.hpp>
+#include <condition_variable>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <type_traits>
 
 template<typename... T>
@@ -138,4 +142,188 @@ protected:
         }
         mInstance = std::move(instance);
     }
+};
+
+template<typename T>
+class __threadsafe_circular_buffer final
+{
+public:
+    explicit __threadsafe_circular_buffer(const unsigned long maxSize) noexcept : mRunning(true), mBuffer(maxSize) {}
+
+    void push_back(T&& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            mBuffer.push_back(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+    }
+
+    void push_back(const T& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            mBuffer.push_back(val);
+        }
+        mCondition.notify_one();
+    }
+
+    bool push_back_if_not_full(T&& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_back(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
+    bool push_back_if_not_full(const T& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_back(val);
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
+    void push_front(T&& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            mBuffer.push_front(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+    }
+
+    void push_front(const T& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            mBuffer.push_front(val);
+        }
+        mCondition.notify_one();
+    }
+
+    bool push_front_if_not_full(T&& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_front(std::forward<T&&>(val));
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
+    bool push_front_if_not_full(const T& val) noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            if (mBuffer.full())
+            {
+                return false;
+            }
+            mBuffer.push_front(val);
+        }
+        mCondition.notify_one();
+        return true;
+    }
+
+    bool drainUntil(std::function<bool(T&&)> checkFunc) noexcept
+    {
+        std::unique_lock<std::mutex> lock(mMutex);
+        mCondition.wait(lock, [=, this]() { return !this->mRunning || !this->mBuffer.empty(); });
+        if (!this->mRunning)
+        {
+            lock.unlock();
+            return false;
+        }
+        while (!mBuffer.empty())
+        {
+            if (!checkFunc(std::move(mBuffer[0])))
+            {
+                break;
+            }
+            mBuffer.pop_front();
+        }
+        lock.unlock();
+        return true;
+    }
+
+    bool timedDrainUntil(std::function<bool(T&&)> checkFunc, const std::chrono::duration<double> timeLimit) noexcept
+    {
+        std::unique_lock<std::mutex> lock(mMutex);
+        if (mCondition.wait_for(lock, timeLimit, [=, this]() { return !this->mRunning || !this->mBuffer.empty(); }))
+        {
+            if (!this->mRunning)
+            {
+                lock.unlock();
+                return false;
+            }
+            while (!mBuffer.empty())
+            {
+                if (!checkFunc(std::move(mBuffer[0])))
+                {
+                    break;
+                }
+                mBuffer.pop_front();
+            }
+            lock.unlock();
+            return true;
+        }
+        else
+        {
+            lock.unlock();
+            return false;
+        }
+    }
+
+    unsigned long size() noexcept
+    {
+        std::scoped_lock lock(mMutex);
+        return mBuffer.size();
+    }
+
+    void clear() noexcept
+    {
+        std::scoped_lock lock(mMutex);
+        mBuffer.clear();
+    }
+
+    void stop() noexcept
+    {
+        {
+            std::scoped_lock lock(mMutex);
+            mRunning = false;
+        }
+        mCondition.notify_all();
+    }
+
+    bool empty() noexcept
+    {
+        std::scoped_lock lock(mMutex);
+        return mBuffer.empty();
+    }
+
+    __threadsafe_circular_buffer(const __threadsafe_circular_buffer&)            = delete;
+    __threadsafe_circular_buffer& operator=(const __threadsafe_circular_buffer&) = delete;
+
+private:
+    bool                      mRunning;
+    boost::circular_buffer<T> mBuffer;
+    std::mutex                mMutex;
+    std::condition_variable   mCondition;
 };

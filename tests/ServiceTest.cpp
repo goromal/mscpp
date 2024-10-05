@@ -1,65 +1,24 @@
 #include <boost/test/unit_test.hpp>
+#include <chrono>
+#include <cstddef>
 #include <iostream>
-#include "mscpp/MicroService.h"
-#include "mscpp/MicroServiceContainer.h"
+#include <memory>
+#include "example-services/Inputs.h"
+#include "example-services/ServiceA.h"
+#include "example-services/ServiceB.h"
 #include "mscpp/ServiceFactory.h"
-
-class ServiceA : public MicroService
-{
-public:
-    using Container = MicroServiceContainer<>;
-
-    ServiceA(const Container& container) : mContainer{container} {}
-    ~ServiceA() {}
-
-    std::string name() const override
-    {
-        return "ServiceA";
-    }
-
-    int getSecretNumber()
-    {
-        return mSecretNum;
-    }
-
-private:
-    const Container mContainer;
-    int             mSecretNum{4};
-
-    void mainLoop() override
-    {
-        std::cout << "I, ServiceA, ran!" << std::endl;
-    }
-};
-
-class ServiceB : public MicroService
-{
-public:
-    using Container = MicroServiceContainer<ServiceA>;
-
-    ServiceB(const Container& container) : mContainer{container} {}
-    ~ServiceB() {}
-
-    std::string name() const override
-    {
-        return "ServiceB";
-    }
-
-private:
-    const Container mContainer;
-
-    void mainLoop() override
-    {
-        std::cout << "I, ServiceB which depends on " << mContainer.get<ServiceA>()->name() << " with secret number "
-                  << mContainer.get<ServiceA>()->getSecretNumber() << ", ran!" << std::endl;
-    }
-};
 
 BOOST_AUTO_TEST_SUITE(TestServices)
 
 BOOST_AUTO_TEST_CASE(TestFactory)
 {
-    ServiceFactory<ServiceA, ServiceB> factory;
+    services::ServiceFactory<ServiceA, ServiceB> factory;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    factory.stop();
+    BOOST_CHECK_EQUAL(factory.get<ServiceA>()->readStore().counter, 2);
+    BOOST_CHECK_EQUAL(factory.get<ServiceB>()->readStore().counter, 10);
+    BOOST_CHECK_EQUAL(factory.get<ServiceA>()->readStore().state, "stopped");
+    BOOST_CHECK_EQUAL(factory.get<ServiceB>()->readStore().state, "init");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

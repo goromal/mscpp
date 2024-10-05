@@ -3,11 +3,39 @@ cmake_minimum_required (VERSION 3.16)
 set(PROJ_NAME mscpp)
 project(${PROJ_NAME})
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+option(BUILD_TESTS "Build Tests" ON)
+option(SECONDARY_SANITIZERS "Run Secondary Sanitizers" OFF)
+
+# message("Your C++ compiler supports these C++ features:")
+# foreach(i ${CMAKE_CXX_COMPILE_FEATURES})
+#   message("${i}")
+# endforeach()
+
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
+
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
                              -pthread")
 
-option(BUILD_TESTS "Build Tests" ON)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  if (SECONDARY_SANITIZERS)
+    add_compile_options(-fsanitize=thread)
+    add_link_options(-fsanitize=thread)
+  else()
+    add_compile_options(-fsanitize=address -fsanitize=undefined)
+    add_link_options(-fsanitize=address -fsanitize=undefined)
+  endif()
+  if(MSVC)
+    add_compile_options(/W4 /WX)
+  else()
+    add_compile_options(-Wall -Wextra -pedantic -Werror)
+  endif()
+endif()
 
 add_library(${PROJ_NAME} INTERFACE)
 target_include_directories(${PROJ_NAME} INTERFACE
@@ -18,8 +46,14 @@ target_include_directories(${PROJ_NAME} INTERFACE
 if (BUILD_TESTS)
     set(UNIT_TEST unit-tests)
     add_executable(${UNIT_TEST}
+        tests/example-services/Inputs.cpp
+        tests/example-services/ServiceA.cpp
+        tests/example-services/ServiceB.cpp
         tests/MainTest.cpp
         tests/ServiceTest.cpp
+    )
+    target_include_directories(${UNIT_TEST} PRIVATE
+        tests/example-services
     )
     target_link_libraries(${UNIT_TEST}
         ${PROJ_NAME}
