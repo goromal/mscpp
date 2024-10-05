@@ -24,8 +24,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   if (SECONDARY_SANITIZERS)
-    add_compile_options(-fsanitize=thread -fsanitize=memory)
-    add_link_options(-fsanitize=thread -fsanitize=memory)
+    add_compile_options(-fsanitize=thread)
+    add_link_options(-fsanitize=thread)
   else()
     add_compile_options(-fsanitize=address -fsanitize=undefined)
     add_link_options(-fsanitize=address -fsanitize=undefined)
