@@ -9,7 +9,7 @@
 #include "Inputs.h"
 
 template<typename StoreType>
-inline void universalReportStep(const StoreType& store)
+inline void universalReportStep(const StoreType&)
 {
     // std::cout << "Service " << store.name << " is in state " << store.state << " with input " << store.input
     //           << " and counter " << store.counter << std::endl;
@@ -27,23 +27,23 @@ struct StoreA
 
 struct InitStateA : public services::State<InitStateA, 0>
 {
-    const size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
 };
 
 struct RunningStateA : public services::State<RunningStateA, 1>
 {
-    const size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
 };
 
 struct StoppedStateA : public services::State<StoppedStateA, 2>
 {
-    const size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
-    const size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, HeartbeatInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, IncrementInput& i);
+    size_t step(StoreA& s, const ContainerTypeA& c, TransitionInput& i);
 };
 
 using StatesA = services::StateSet<InitStateA, RunningStateA, StoppedStateA>;

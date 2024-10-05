@@ -18,9 +18,9 @@ struct StoreB
 
 struct InitStateB : public services::State<InitStateB, 0>
 {
-    const size_t step(StoreB& s, const ContainerTypeB& c, HeartbeatInput& i);
-    const size_t step(StoreB& s, const ContainerTypeB& c, IncrementInput& i);
-    const size_t step(StoreB& s, const ContainerTypeB& c, TransitionInput& i);
+    size_t step(StoreB& s, const ContainerTypeB& c, HeartbeatInput& i);
+    size_t step(StoreB& s, const ContainerTypeB& c, IncrementInput& i);
+    size_t step(StoreB& s, const ContainerTypeB& c, TransitionInput& i);
 };
 
 using StatesB = services::StateSet<InitStateB>;

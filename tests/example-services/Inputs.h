@@ -24,8 +24,8 @@ struct IncrementInput : public services::Input<IncrementInput, BooleanResult, 2,
 struct TransitionInput : public services::Input<TransitionInput, BooleanResult, 2, 5>
 {
     TransitionInput(const size_t& state) : mState(state) {}
-    const size_t state() const;
-    size_t       mState;
+    size_t state() const;
+    size_t mState;
 };
 
 using Inputs = services::InputSet<HeartbeatInput, IncrementInput, TransitionInput>;

@@ -95,7 +95,7 @@ public:
     }
 
 protected:
-    virtual void initStore(Store& store) {}
+    virtual void initStore(Store&) {}
 
 private:
     class FiniteStateMachine
@@ -253,7 +253,7 @@ private:
             }
         }
 
-        if (fullyDrained && nextIdx >= 0)
+        if (fullyDrained && nextIdx < nextCandidates.size())
         {
             nextViable = std::move(nextCandidates[nextIdx]);
             return true;

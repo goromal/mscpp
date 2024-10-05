@@ -322,8 +322,8 @@ public:
     __threadsafe_circular_buffer& operator=(const __threadsafe_circular_buffer&) = delete;
 
 private:
-    boost::circular_buffer<T> mBuffer;
     bool                      mRunning;
+    boost::circular_buffer<T> mBuffer;
     std::mutex                mMutex;
     std::condition_variable   mCondition;
 };

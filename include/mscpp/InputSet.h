@@ -19,7 +19,7 @@ struct Input
     std::promise<Result> promise;
     std::future<Result>  getFuture()
     {
-        return std::move(promise.get_future());
+        return promise.get_future();
     }
     void setResult(Result&& result)
     {
