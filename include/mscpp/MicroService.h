@@ -182,7 +182,7 @@ private:
 
             auto endTime = std::chrono::steady_clock::now();
             auto dur     = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
-            assert(dur <= heartbeatDur);
+            assert(dur <= heartbeatDur); // TODO: Don't rely on runtime asserts.
 
             auto now = std::chrono::steady_clock::now();
 
@@ -197,7 +197,7 @@ private:
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
                 endTime  = std::chrono::steady_clock::now();
                 auto dur = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
-                assert(dur <= nextDuration);
+                assert(dur <= nextDuration); // TODO: Don't rely on runtime asserts.
                 now = std::chrono::steady_clock::now();
             }
         }
