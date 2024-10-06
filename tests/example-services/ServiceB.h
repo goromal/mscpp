@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdexcept>
+
 #include "mscpp/StateSet.h"
 #include "mscpp/MicroService.h"
 #include "mscpp/MicroServiceContainer.h"

@@ -10,19 +10,25 @@ size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, HeartbeatInput&)
         s.state = "init-SEND_INCREMENT";
         IncrementInput input;
         auto           inputResult = input.getFuture();
-        assert(c.get<ServiceA>()->sendInput(std::move(input)));
+        if (!c.get<ServiceA>()->sendInput(std::move(input)))
+        {
+            throw std::runtime_error("Failed to push input; queue full.");
+        }
         try
         {
             auto result = inputResult.get();
             if (std::holds_alternative<BooleanResult>(result))
             {
-                assert(std::get<BooleanResult>(result).result);
+                if (!std::get<BooleanResult>(result).result)
+                {
+                    throw std::runtime_error("Future returned failure.");
+                }
             }
             else
             {
                 std::cout << "Service A returned an error: " << std::get<services::ErrorResult>(result).errorMessage
                           << std::endl;
-                assert(false);
+                throw std::runtime_error("Service error.");
             }
         }
         catch (const std::future_error& e)
@@ -32,7 +38,7 @@ size_t InitStateB::step(StoreB& s, const ContainerTypeB& c, HeartbeatInput&)
             {
                 std::cout << "Broken promise detected!" << std::endl;
             }
-            assert(false);
+            throw std::runtime_error("Broken service promise.");
         }
     }
     else if (s.counter == 5)
