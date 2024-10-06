@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <thread>
 #include <vector>
+#include <stdexcept>
 
 #include "internal/utils.h"
 
@@ -181,7 +182,10 @@ private:
 
             auto endTime = std::chrono::steady_clock::now();
             auto dur     = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
-            assert(dur <= heartbeatDur); // TODO: Don't rely on runtime asserts.
+            if (dur > heartbeatDur)
+            {
+                throw std::runtime_error(name() + ": Heartbeat execution took more than allotted time.");
+            }
 
             auto now = std::chrono::steady_clock::now();
 
@@ -196,7 +200,10 @@ private:
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());
                 endTime  = std::chrono::steady_clock::now();
                 auto dur = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime);
-                assert(dur <= nextDuration); // TODO: Don't rely on runtime asserts.
+                if (dur > nextDuration)
+                {
+                    throw std::runtime_error(name() + ": Input execution took more than allotted time.");
+                }
                 now = std::chrono::steady_clock::now();
             }
         }
