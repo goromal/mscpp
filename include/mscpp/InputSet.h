@@ -1,6 +1,7 @@
 #pragma once
 #include "internal/utils.h"
 #include <future>
+#include <variant>
 
 namespace services
 {
