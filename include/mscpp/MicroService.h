@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <typeinfo>
 #include <experimental/type_traits>
 #include <mutex>
 #include <pthread.h>
@@ -12,11 +13,13 @@
 #include <stdexcept>
 
 #include "internal/utils.h"
+#include "Logging.h"
 
 namespace services
 {
 
-template<typename Store,
+template<const char* Name,
+         typename Store,
          typename ContainerType,
          typename States,
          typename Inputs,
@@ -42,7 +45,10 @@ public:
     MicroService(MicroService&&)                 = delete;
     MicroService& operator=(MicroService&&)      = delete;
 
-    virtual const std::string name() const = 0;
+    const std::string name() const
+    {
+        return std::string(Name);
+    }
 
     // Place an input on this services queue. Will return false if the queue is full, signaling to try again later.
     bool sendInput(Inputs::TypesVariant&& input)
@@ -108,11 +114,14 @@ private:
         template<typename InputType>
         void execute(Store& store, InputType& input)
         {
-            // TODO: This is where the nexus of input, state, and store recording and logging can be.
             const size_t nextState = mStates.runOnActiveState([this, &store, &input](auto& state) -> size_t {
                 using S = typename std::decay<decltype(state)>::type;
                 using I = InputType::DerivedType;
                 assertStepExists<S, I>();
+                LOG_TRACE("{} executing step with state={} and input={}",
+                          Name,
+                          demangle(typeid(S).name()),
+                          demangle(typeid(I).name()));
                 return state.step(store, mContainer, input);
             });
             mStates.transition(nextState);

@@ -69,8 +69,3 @@ size_t InitStateB::step(StoreB& s, const ContainerTypeB&, TransitionInput&)
     s.input = "transition";
     return InitStateB::index();
 }
-
-const std::string ServiceB::name() const
-{
-    return "ServiceB";
-}

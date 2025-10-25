@@ -76,8 +76,3 @@ size_t StoppedStateA::step(StoreA& s, const ContainerTypeA&, TransitionInput& i)
     universalReportStep(s);
     return i.state();
 }
-
-const std::string ServiceA::name() const
-{
-    return "ServiceA";
-}

@@ -15,6 +15,8 @@ inline void universalReportStep(const StoreType&)
     //           << " and counter " << store.counter << std::endl;
 }
 
+inline constexpr char NameA[] = "ServiceA";
+
 using ContainerTypeA = services::MicroServiceContainer<>;
 
 struct StoreA
@@ -48,11 +50,10 @@ struct StoppedStateA : public services::State<StoppedStateA, 2>
 
 using StatesA = services::StateSet<InitStateA, RunningStateA, StoppedStateA>;
 
-using ServiceABase = services::MicroService<StoreA, ContainerTypeA, StatesA, Inputs>;
+using ServiceABase = services::MicroService<NameA, StoreA, ContainerTypeA, StatesA, Inputs>;
 
 class ServiceA : public ServiceABase
 {
 public:
     ServiceA(const ContainerTypeA& container) : ServiceABase(container) {}
-    const std::string name() const override;
 };
