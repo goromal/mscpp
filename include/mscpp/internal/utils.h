@@ -1,10 +1,29 @@
 #pragma once
-#include <boost/circular_buffer.hpp>
+#include <vector>
+#include <cstddef>
+#include <deque>
+#include <utility>
+#include <stdexcept>
 #include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <type_traits>
+#if defined(__GNUG__)
+#include <cxxabi.h>
+#include <cstdlib>
+#include <memory>
+inline std::string demangle(const char* name)
+{
+    int                                    status = 0;
+    std::unique_ptr<char, void (*)(void*)> res{abi::__cxa_demangle(name, nullptr, nullptr, &status), std::free};
+    return (status == 0) ? res.get() : name;
+}
+#else
+inline std::string demangle(const char* name)
+{
+    return name;
+}
+#endif
 
 template<typename... T>
 struct __place_holder
@@ -141,6 +160,152 @@ protected:
             return;
         }
         mInstance = std::move(instance);
+    }
+};
+
+template<typename T>
+class CircularBuffer
+{
+public:
+    explicit CircularBuffer(size_t capacity) : mBuffer(capacity), mHead(0), mSize(0) {}
+
+    // --- Capacity ---
+    size_t size() const noexcept
+    {
+        return mSize;
+    }
+    size_t capacity() const noexcept
+    {
+        return mBuffer.size();
+    }
+    bool empty() const noexcept
+    {
+        return mSize == 0;
+    }
+    bool full() const noexcept
+    {
+        return mSize == mBuffer.size();
+    }
+
+    // --- Element Access ---
+    T& operator[](size_t index)
+    {
+        return mBuffer[(mHead + index) % mBuffer.size()];
+    }
+
+    const T& operator[](size_t index) const
+    {
+        return mBuffer[(mHead + index) % mBuffer.size()];
+    }
+
+    T& front()
+    {
+        if (empty())
+            throw std::runtime_error("CircularBuffer is empty");
+        return mBuffer[mHead];
+    }
+
+    const T& front() const
+    {
+        if (empty())
+            throw std::runtime_error("CircularBuffer is empty");
+        return mBuffer[mHead];
+    }
+
+    T& back()
+    {
+        if (empty())
+            throw std::runtime_error("CircularBuffer is empty");
+        return mBuffer[(mHead + mSize - 1) % mBuffer.size()];
+    }
+
+    const T& back() const
+    {
+        if (empty())
+            throw std::runtime_error("CircularBuffer is empty");
+        return mBuffer[(mHead + mSize - 1) % mBuffer.size()];
+    }
+
+    // --- Modifiers ---
+    void clear() noexcept
+    {
+        mHead = 0;
+        mSize = 0;
+    }
+
+    void push_back(const T& value)
+    {
+        emplace_back(value);
+    }
+
+    void push_back(T&& value)
+    {
+        emplace_back(std::move(value));
+    }
+
+    void push_front(const T& value)
+    {
+        emplace_front(value);
+    }
+
+    void push_front(T&& value)
+    {
+        emplace_front(std::move(value));
+    }
+
+    void pop_back()
+    {
+        if (empty())
+            throw std::runtime_error("CircularBuffer underflow on pop_back");
+        --mSize;
+    }
+
+    void pop_front()
+    {
+        if (empty())
+            throw std::runtime_error("CircularBuffer underflow on pop_front");
+        mHead = (mHead + 1) % mBuffer.size();
+        --mSize;
+    }
+
+private:
+    std::vector<T> mBuffer;
+    size_t         mHead;
+    size_t         mSize;
+
+    template<typename U>
+    void emplace_back(U&& value)
+    {
+        if (mBuffer.empty())
+            return;
+        if (full())
+        {
+            mBuffer[(mHead + mSize) % mBuffer.size()] = std::forward<U>(value);
+            mHead                                     = (mHead + 1) % mBuffer.size();
+        }
+        else
+        {
+            mBuffer[(mHead + mSize) % mBuffer.size()] = std::forward<U>(value);
+            ++mSize;
+        }
+    }
+
+    template<typename U>
+    void emplace_front(U&& value)
+    {
+        if (mBuffer.empty())
+            return;
+        if (full())
+        {
+            mHead          = (mHead + mBuffer.size() - 1) % mBuffer.size();
+            mBuffer[mHead] = std::forward<U>(value);
+        }
+        else
+        {
+            mHead          = (mHead + mBuffer.size() - 1) % mBuffer.size();
+            mBuffer[mHead] = std::forward<U>(value);
+            ++mSize;
+        }
     }
 };
 
@@ -322,8 +487,8 @@ public:
     __threadsafe_circular_buffer& operator=(const __threadsafe_circular_buffer&) = delete;
 
 private:
-    bool                      mRunning;
-    boost::circular_buffer<T> mBuffer;
-    std::mutex                mMutex;
-    std::condition_variable   mCondition;
+    bool                    mRunning;
+    CircularBuffer<T>       mBuffer;
+    std::mutex              mMutex;
+    std::condition_variable mCondition;
 };

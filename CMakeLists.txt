@@ -10,10 +10,8 @@ endif()
 option(BUILD_TESTS "Build Tests" ON)
 option(SECONDARY_SANITIZERS "Run Secondary Sanitizers" OFF)
 
-# message("Your C++ compiler supports these C++ features:")
-# foreach(i ${CMAKE_CXX_COMPILE_FEATURES})
-#   message("${i}")
-# endforeach()
+find_package(spdlog REQUIRED)
+find_package(Catch2 REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +40,12 @@ target_include_directories(${PROJ_NAME} INTERFACE
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
+target_link_libraries(${PROJ_NAME} INTERFACE spdlog::spdlog_header_only)
+target_compile_definitions(${PROJ_NAME} INTERFACE
+    $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE>
+    $<$<CONFIG:RelWithDebInfo>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO>
+    $<$<CONFIG:Release>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_WARN>
+)
 
 if (BUILD_TESTS)
     set(UNIT_TEST unit-tests)
@@ -49,7 +53,6 @@ if (BUILD_TESTS)
         tests/example-services/Inputs.cpp
         tests/example-services/ServiceA.cpp
         tests/example-services/ServiceB.cpp
-        tests/MainTest.cpp
         tests/ServiceTest.cpp
     )
     target_include_directories(${UNIT_TEST} PRIVATE
@@ -57,7 +60,7 @@ if (BUILD_TESTS)
     )
     target_link_libraries(${UNIT_TEST}
         ${PROJ_NAME}
-        boost_unit_test_framework
+        Catch2::Catch2
     )
     add_test(NAME ${UNIT_TEST} COMMAND ${UNIT_TEST})
 
@@ -68,6 +71,10 @@ if (BUILD_TESTS)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMAND ${UNIT_TEST}
     )
+
+    include(CTest)
+    include(Catch)
+    catch_discover_tests(${UNIT_TEST})
 endif()
 
 include(CMakePackageConfigHelpers)

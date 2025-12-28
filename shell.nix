@@ -6,9 +6,7 @@ in with pkgs;
 mkShell {
   nativeBuildInputs = [ cpp-helper cmake ];
   buildInputs = [
-    boost
+    spdlog
+    catch2
   ];
-  shellHook = ''
-    cpp-helper vscode
-  '';
 }

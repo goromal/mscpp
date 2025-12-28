@@ -8,6 +8,8 @@
 
 #include "ServiceA.h"
 
+inline constexpr char NameB[] = "ServiceB";
+
 using ContainerTypeB = services::MicroServiceContainer<ServiceA>;
 
 struct StoreB
@@ -27,11 +29,10 @@ struct InitStateB : public services::State<InitStateB, 0>
 
 using StatesB = services::StateSet<InitStateB>;
 
-using ServiceBBase = services::MicroService<StoreB, ContainerTypeB, StatesB, Inputs, 5, 100>;
+using ServiceBBase = services::MicroService<NameB, StoreB, ContainerTypeB, StatesB, Inputs, 5, 100>;
 
 class ServiceB : public ServiceBBase
 {
 public:
     ServiceB(const ContainerTypeB& container) : ServiceBBase(container) {}
-    const std::string name() const override;
 };

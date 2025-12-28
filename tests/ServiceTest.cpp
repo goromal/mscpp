@@ -1,4 +1,10 @@
-#include <boost/test/unit_test.hpp>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#define CATCH_CONFIG_MAIN
+#include <catch2/catch.hpp>
+#pragma GCC diagnostic pop
 #include <chrono>
 #include <cstddef>
 #include <iostream>
@@ -8,17 +14,13 @@
 #include "example-services/ServiceB.h"
 #include "mscpp/ServiceFactory.h"
 
-BOOST_AUTO_TEST_SUITE(TestServices)
-
-BOOST_AUTO_TEST_CASE(TestFactory)
+TEST_CASE("Test service factory")
 {
     services::ServiceFactory<ServiceA, ServiceB> factory;
     std::this_thread::sleep_for(std::chrono::seconds(1));
     factory.stop();
-    BOOST_CHECK_EQUAL(factory.get<ServiceA>()->readStore().counter, 2);
-    BOOST_CHECK_EQUAL(factory.get<ServiceB>()->readStore().counter, 10);
-    BOOST_CHECK_EQUAL(factory.get<ServiceA>()->readStore().state, "stopped");
-    BOOST_CHECK_EQUAL(factory.get<ServiceB>()->readStore().state, "init");
+    REQUIRE(factory.get<ServiceA>()->readStore().counter == 2);
+    REQUIRE(factory.get<ServiceB>()->readStore().counter == 10);
+    REQUIRE(factory.get<ServiceA>()->readStore().state == "stopped");
+    REQUIRE(factory.get<ServiceB>()->readStore().state == "init");
 }
-
-BOOST_AUTO_TEST_SUITE_END()
