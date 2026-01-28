@@ -48,6 +48,7 @@ target_compile_definitions(${PROJ_NAME} INTERFACE
 )
 
 if (BUILD_TESTS)
+    # Actor mode tests (default)
     set(UNIT_TEST unit-tests)
     add_executable(${UNIT_TEST}
         tests/example-services/Inputs.cpp
@@ -66,15 +67,34 @@ if (BUILD_TESTS)
 
     add_custom_command(
         TARGET ${UNIT_TEST}
-        COMMENT "Run unit tests"
+        COMMENT "Run actor mode unit tests"
         POST_BUILD
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMAND ${UNIT_TEST}
     )
 
+    # Reactor mode tests (Phase 2)
+    set(REACTOR_TEST reactor-tests)
+    add_executable(${REACTOR_TEST}
+        tests/example-services/Inputs.cpp
+        tests/example-services/ServiceA.cpp
+        tests/example-services/ServiceB.cpp
+        tests/ReactorTest.cpp
+    )
+    target_include_directories(${REACTOR_TEST} PRIVATE
+        tests/example-services
+    )
+    target_link_libraries(${REACTOR_TEST}
+        ${PROJ_NAME}
+        Catch2::Catch2
+    )
+    # Note: REACTOR_MODE is defined in ReactorTest.cpp itself
+    add_test(NAME ${REACTOR_TEST} COMMAND ${REACTOR_TEST})
+
     include(CTest)
     include(Catch)
     catch_discover_tests(${UNIT_TEST})
+    catch_discover_tests(${REACTOR_TEST})
 endif()
 
 include(CMakePackageConfigHelpers)

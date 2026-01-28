@@ -477,10 +477,24 @@ public:
         mCondition.notify_all();
     }
 
-    bool empty() noexcept
+    bool empty() const noexcept
     {
         std::scoped_lock lock(mMutex);
         return mBuffer.empty();
+    }
+
+    // Try to pop front element without blocking
+    // Returns true if an element was popped, false if buffer was empty
+    bool try_pop_front(T& out) noexcept
+    {
+        std::scoped_lock lock(mMutex);
+        if (mBuffer.empty())
+        {
+            return false;
+        }
+        out = std::move(mBuffer[0]);
+        mBuffer.pop_front();
+        return true;
     }
 
     __threadsafe_circular_buffer(const __threadsafe_circular_buffer&)            = delete;
@@ -489,6 +503,6 @@ public:
 private:
     bool                    mRunning;
     CircularBuffer<T>       mBuffer;
-    std::mutex              mMutex;
+    mutable std::mutex              mMutex;  // Mutable for const methods
     std::condition_variable mCondition;
 };

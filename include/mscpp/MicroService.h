@@ -16,8 +16,20 @@
 #include "Logging.h"
 #include "LogicalTime.h"
 
+#if REACTOR_MODE
+#include "ReactorScheduler.h"
+#endif
+
 namespace services
 {
+
+#if REACTOR_MODE
+// Global reactor ID counter (shared across ALL template instantiations)
+inline std::atomic<size_t>& getGlobalReactorIdCounter() {
+    static std::atomic<size_t> nextId{0};
+    return nextId;
+}
+#endif
 
 template<const char* Name,
          typename Store,
@@ -27,18 +39,35 @@ template<const char* Name,
          size_t InputWindow = 5,
          size_t MaxInputs   = 100>
 class MicroService
+#if REACTOR_MODE
+    : public IReactor
+#endif
 {
 public:
     using Container = ContainerType;
 
-    MicroService() {}
-    MicroService(const Container& container) : mMachine(container) {}
+    MicroService() : mMachine(Container(__handle_later{}))
+    {
+#if REACTOR_MODE
+        mReactorId = getGlobalReactorIdCounter().fetch_add(1);
+#endif
+    }
+
+    MicroService(const Container& container) : mMachine(container)
+    {
+#if REACTOR_MODE
+        mReactorId = getGlobalReactorIdCounter().fetch_add(1);
+#endif
+    }
+
     ~MicroService()
     {
+#if !REACTOR_MODE
         if (running())
         {
             stop();
         }
+#endif
     }
 
     MicroService(const MicroService&)            = delete;
@@ -57,6 +86,126 @@ public:
         return mInputBuffer.push_back_if_not_full(std::move(input));
     }
 
+#if REACTOR_MODE
+    // Reactor mode: Scheduler manages execution
+    void setScheduler(ReactorScheduler* scheduler)
+    {
+        mScheduler = scheduler;
+    }
+
+    // IReactor interface implementation
+    size_t getId() const override
+    {
+        return mReactorId;
+    }
+
+    std::string getName() const override
+    {
+        return name();
+    }
+
+    void initialize() override
+    {
+        std::scoped_lock lock(mMutex);
+        initStore(mStore);
+        mRunning = true;
+    }
+
+    void executeHeartbeat(const LogicalTag& tag) override
+    {
+        auto heartbeatInput = getHeartbeatInput();
+        heartbeatInput.setTag(tag);
+
+#if LOG_LOGICAL_TIME
+        LOG_TRACE("{} heartbeat at logical tag {}", name(), tag);
+#endif
+
+        {
+            std::scoped_lock lock(mMutex);
+            mMachine.execute(mStore, heartbeatInput);
+        }
+
+        // Schedule next heartbeat
+        if (mScheduler && mRunning)
+        {
+            auto heartbeatNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(heartbeatInput.duration());
+            LogicalTag nextHeartbeatTag = tag.advance_time(heartbeatNanos);
+
+            mScheduler->scheduleEvent(nextHeartbeatTag, mReactorId, [this, nextHeartbeatTag]() {
+                this->executeHeartbeat(nextHeartbeatTag);
+            }, name() + " heartbeat");
+        }
+
+        // Process any pending inputs at microsteps after this heartbeat
+        if (hasPendingInputs())
+        {
+            LogicalTag inputTag = tag.next_microstep();
+            mScheduler->scheduleEvent(inputTag, mReactorId, [this, inputTag]() {
+                this->processNextInput(inputTag);
+            }, name() + " process inputs");
+        }
+    }
+
+    bool hasPendingInputs() const override
+    {
+        // Check if input buffer has any elements (thread-safe peek)
+        return !mInputBuffer.empty();
+    }
+
+    bool processNextInput(const LogicalTag& tag) override
+    {
+        typename Inputs::TypesVariant nextViable;
+
+        // Try to dequeue one input
+        bool gotInput = mInputBuffer.try_pop_front(nextViable);
+
+        if (gotInput)
+        {
+            // Tag the input
+            std::visit([&tag](auto& inp) { inp.setTag(tag); }, nextViable);
+
+#if LOG_LOGICAL_TIME
+            LOG_TRACE("{} processing input at logical tag {}", name(), tag);
+#endif
+
+            {
+                std::scoped_lock lock(mMutex);
+                applyApplicableInput(mStore, nextViable, typename Inputs::GenericInputs());
+            }
+
+            // If more inputs remain, schedule processing at next microstep
+            if (hasPendingInputs())
+            {
+                LogicalTag nextInputTag = tag.next_microstep();
+                mScheduler->scheduleEvent(nextInputTag, mReactorId, [this, nextInputTag]() {
+                    this->processNextInput(nextInputTag);
+                }, name() + " process inputs");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void run()
+    {
+        // In reactor mode, run() does nothing - scheduler manages execution
+        throw std::runtime_error(name() + ": run() should not be called in REACTOR_MODE");
+    }
+
+    void stop()
+    {
+        // In reactor mode, stop() just sets flag
+        mRunning = false;
+    }
+
+    bool running()
+    {
+        return mRunning.load();
+    }
+
+#else
+    // Actor mode: Per-service threads
     void run()
     {
         if (running())
@@ -95,6 +244,7 @@ public:
     {
         return mRunning.load();
     }
+#endif
 
     const Store& readStore()
     {
@@ -159,7 +309,9 @@ private:
     std::mutex         mMutex;
     Store              mStore;
     FiniteStateMachine mMachine;
+#if !REACTOR_MODE
     std::thread        mMainThread;
+#endif
     std::atomic_bool   mRunning{false};
 
     __threadsafe_circular_buffer<typename Inputs::TypesVariant> mInputBuffer{MaxInputs};
@@ -169,6 +321,12 @@ private:
     LogicalTag mCurrentTag{LogicalTime(0), 0};
     std::atomic<uint64_t> mLogicalTimeNanos{0};  // For thread-safe reads
     std::atomic<uint32_t> mLogicalMicrostep{0};
+#endif
+
+#if REACTOR_MODE
+    // Phase 2: Reactor mode specific members
+    size_t mReactorId{0};
+    ReactorScheduler* mScheduler{nullptr};
 #endif
 
     const Inputs::Heartbeat getHeartbeatInput() const
