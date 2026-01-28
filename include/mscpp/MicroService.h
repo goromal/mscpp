@@ -14,6 +14,7 @@
 
 #include "internal/utils.h"
 #include "Logging.h"
+#include "LogicalTime.h"
 
 namespace services
 {
@@ -101,6 +102,14 @@ public:
         return mStore;
     }
 
+#if ENABLE_LOGICAL_TIME
+    // Phase 1: Read current logical tag (thread-safe)
+    LogicalTag getCurrentTag() const
+    {
+        return LogicalTag{LogicalTime(mLogicalTimeNanos.load()), mLogicalMicrostep.load()};
+    }
+#endif
+
 protected:
     virtual void initStore(Store&) {}
 
@@ -155,6 +164,13 @@ private:
 
     __threadsafe_circular_buffer<typename Inputs::TypesVariant> mInputBuffer{MaxInputs};
 
+#if ENABLE_LOGICAL_TIME
+    // Phase 1: Track logical time alongside physical time
+    LogicalTag mCurrentTag{LogicalTime(0), 0};
+    std::atomic<uint64_t> mLogicalTimeNanos{0};  // For thread-safe reads
+    std::atomic<uint32_t> mLogicalMicrostep{0};
+#endif
+
     const Inputs::Heartbeat getHeartbeatInput() const
     {
         return typename Inputs::Heartbeat();
@@ -184,6 +200,15 @@ private:
         {
             auto startTime = std::chrono::steady_clock::now();
             auto next      = startTime + heartbeatDur;
+
+#if ENABLE_LOGICAL_TIME
+            // Phase 1: Tag heartbeat with current logical time
+            heartbeatInput.setTag(mCurrentTag);
+#if LOG_LOGICAL_TIME
+            LOG_TRACE("{} heartbeat at logical tag {}", name(), mCurrentTag);
+#endif
+#endif
+
             {
                 std::scoped_lock lock(mMutex);
                 mMachine.execute(store, heartbeatInput);
@@ -196,6 +221,14 @@ private:
                 throw std::runtime_error(name() + ": Heartbeat execution took more than allotted time.");
             }
 
+#if ENABLE_LOGICAL_TIME
+            // Advance logical time by heartbeat duration
+            auto heartbeatNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(heartbeatInput.duration());
+            mCurrentTag = mCurrentTag.advance_time(heartbeatNanos);
+            mLogicalTimeNanos.store(mCurrentTag.time.count());
+            mLogicalMicrostep.store(mCurrentTag.microstep);
+#endif
+
             auto now = std::chrono::steady_clock::now();
 
             typename Inputs::TypesVariant nextViable;
@@ -204,6 +237,17 @@ private:
                                       nextDuration,
                                       std::chrono::duration_cast<std::chrono::duration<double>>(next - now)))
             {
+#if ENABLE_LOGICAL_TIME
+                // Phase 1: Tag inputs with current logical time + microstep
+                std::visit([this](auto& inp) { inp.setTag(mCurrentTag.next_microstep()); }, nextViable);
+#if LOG_LOGICAL_TIME
+                LOG_TRACE("{} processing input at logical tag {}", name(), mCurrentTag.next_microstep());
+#endif
+                // Advance microstep for next input
+                mCurrentTag = mCurrentTag.next_microstep();
+                mLogicalMicrostep.store(mCurrentTag.microstep);
+#endif
+
                 startTime = std::chrono::steady_clock::now();
                 std::scoped_lock lock(mMutex);
                 applyApplicableInput(store, nextViable, typename Inputs::GenericInputs());

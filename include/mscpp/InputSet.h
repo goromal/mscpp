@@ -1,5 +1,6 @@
 #pragma once
 #include "internal/utils.h"
+#include "LogicalTime.h"
 #include <future>
 #include <variant>
 
@@ -35,6 +36,23 @@ struct Input
     {
         return std::chrono::milliseconds(DURATION_MILLIS);
     }
+
+#if ENABLE_LOGICAL_TIME
+    // Phase 1: Add logical tag to all inputs (optional field for backward compatibility)
+    LogicalTag tag{};
+
+    // Get the logical tag for this input
+    const LogicalTag& getTag() const
+    {
+        return tag;
+    }
+
+    // Set the logical tag for this input
+    void setTag(const LogicalTag& t)
+    {
+        tag = t;
+    }
+#endif
 };
 
 template<typename HeartbeatInput, typename... Inputs>
