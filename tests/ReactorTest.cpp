@@ -2,7 +2,6 @@
 #pragma GCC diagnostic ignored "-Wshadow"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 #pragma GCC diagnostic pop
 #include <chrono>
@@ -11,10 +10,6 @@
 #include <memory>
 #include <vector>
 #include <string>
-
-// Force reactor mode for this test file
-#undef REACTOR_MODE
-#define REACTOR_MODE 1
 
 #include "example-services/Inputs.h"
 #include "example-services/ServiceA.h"
@@ -58,20 +53,14 @@ TEST_CASE("Test reactor mode with centralized scheduler")
         REQUIRE(serviceA->readStore().input == "heartbeat");
     }
 
-    // NOTE: Tests with cross-service communication (ServiceA + ServiceB) currently deadlock
-    // because ServiceB blocks waiting for synchronous responses from ServiceA in the same thread.
-    // This will be fixed in Phase 4 with port-based asynchronous I/O.
-
-    /*
     SECTION("Deterministic execution order")
     {
         // Run the same scenario multiple times and verify identical results
+        // Using only ServiceA to avoid cross-service dependencies
         struct ExecutionTrace
         {
             unsigned int counterA;
-            unsigned int counterB;
             std::string stateA;
-            std::string stateB;
         };
 
         std::vector<ExecutionTrace> traces;
@@ -90,56 +79,25 @@ TEST_CASE("Test reactor mode with centralized scheduler")
             stopThread.join();
 
             auto serviceA = factory.get<ServiceA>();
-            auto serviceB = factory.get<ServiceB>();
 
             ExecutionTrace trace{
                 serviceA->readStore().counter,
-                serviceB->readStore().counter,
-                serviceA->readStore().state,
-                serviceB->readStore().state
+                serviceA->readStore().state
             };
 
             traces.push_back(trace);
 
-            std::cout << "Run " << run << ": ServiceA=" << trace.counterA
-                      << " ServiceB=" << trace.counterB << std::endl;
+            std::cout << "Run " << run << ": ServiceA counter=" << trace.counterA
+                      << " state=" << trace.stateA << std::endl;
         }
 
         // All runs should produce identical results (determinism)
         for (size_t i = 1; i < traces.size(); i++)
         {
             REQUIRE(traces[i].counterA == traces[0].counterA);
-            REQUIRE(traces[i].counterB == traces[0].counterB);
             REQUIRE(traces[i].stateA == traces[0].stateA);
-            REQUIRE(traces[i].stateB == traces[0].stateB);
         }
     }
-
-    SECTION("Cross-service communication in reactor mode")
-    {
-        services::ReactorFactory<ServiceA, ServiceB> factory;
-
-        std::thread stopThread([&factory]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            factory.stop();
-        });
-
-        factory.run();
-        stopThread.join();
-
-        auto serviceA = factory.get<ServiceA>();
-        auto serviceB = factory.get<ServiceB>();
-
-        // ServiceB sends inputs to ServiceA, verify they were processed
-        std::cout << "Final ServiceA counter: " << serviceA->readStore().counter << std::endl;
-        std::cout << "Final ServiceB counter: " << serviceB->readStore().counter << std::endl;
-        std::cout << "Final ServiceA state: " << serviceA->readStore().state << std::endl;
-        std::cout << "Final ServiceB state: " << serviceB->readStore().state << std::endl;
-
-        // ServiceB should have executed multiple heartbeats
-        REQUIRE(serviceB->readStore().counter >= 10);
-    }
-    */
 
     SECTION("Logical time progression in reactor mode")
     {

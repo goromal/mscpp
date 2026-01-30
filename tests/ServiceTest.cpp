@@ -14,6 +14,10 @@
 #include "example-services/ServiceB.h"
 #include "mscpp/ServiceFactory.h"
 
+#if !REACTOR_MODE
+// ServiceFactory tests only run in actor mode (REACTOR_MODE=0)
+// For reactor mode tests, see ReactorTest.cpp
+
 TEST_CASE("Test service factory")
 {
     services::ServiceFactory<ServiceA, ServiceB> factory;
@@ -116,4 +120,5 @@ TEST_CASE("Test logical time tracking - Phase 1")
         REQUIRE(advanced.microstep == 0);
     }
 }
-#endif
+#endif  // ENABLE_LOGICAL_TIME
+#endif  // !REACTOR_MODE

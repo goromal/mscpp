@@ -33,6 +33,46 @@ public:
         mActiveState = state;
     }
 
+    size_t activeState() const
+    {
+        return mActiveState;
+    }
+
+    /**
+     * Execute an input on the active state (with ports support)
+     *
+     * Template Parameters:
+     * - Store: State storage type
+     * - Ports: Port collection type
+     * - Container: Dependency injection container
+     * - InputType: Input type to process
+     *
+     * Calls the active state's step(store, ports, container, input) method
+     * and transitions to the returned state.
+     */
+    template<typename Store, typename Ports, typename Container, typename InputType>
+    void execute(Store& store, Ports& ports, const Container& container, InputType& input)
+    {
+        size_t nextState = runOnActiveState([&](auto& state) {
+            return state.step(store, ports, container, input);
+        });
+        transition(nextState);
+    }
+
+    /**
+     * Execute an input on the active state (original signature without ports)
+     *
+     * For backward compatibility with existing FSM code that doesn't use ports.
+     */
+    template<typename Store, typename Container, typename InputType>
+    void execute(Store& store, const Container& container, InputType& input)
+    {
+        size_t nextState = runOnActiveState([&](auto& state) {
+            return state.step(store, container, input);
+        });
+        transition(nextState);
+    }
+
     template<typename F>
     decltype(auto) runOnActiveState(F&& f)
     {
