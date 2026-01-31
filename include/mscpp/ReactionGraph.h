@@ -3,6 +3,7 @@
 #include "Reaction.h"
 #include "LogicalTime.h"
 #include "Logging.h"
+#include "ThreadPool.h"
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
@@ -10,6 +11,7 @@
 #include <string>
 #include <stdexcept>
 #include <memory>
+#include <future>
 
 namespace services
 {
@@ -354,15 +356,15 @@ public:
     }
 
     /**
-     * Execute reactions level-by-level
+     * Execute reactions level-by-level (sequential)
      *
-     * This enables future parallel execution within each level.
+     * Processes reactions level-by-level sequentially.
+     * For parallel execution, use executeByLevelsParallel().
      */
     void executeByLevels()
     {
         for (const auto& level : mTopologicalOrder.levels)
         {
-            // Currently sequential; future: parallel execution within level
             for (size_t index : level)
             {
                 auto it = mCallbacks.find(index);
@@ -370,6 +372,69 @@ public:
                 {
                     it->second();
                 }
+            }
+        }
+    }
+
+    /**
+     * Execute reactions level-by-level with parallel execution
+     *
+     * For each level in the dependency graph:
+     * 1. Submit all reactions in the level to the thread pool
+     * 2. Wait for all reactions to complete (barrier synchronization)
+     * 3. Move to next level
+     *
+     * This ensures:
+     * - Independent reactions (same level) execute in parallel
+     * - Dependencies are respected (level ordering)
+     * - Deterministic execution (same logical results as sequential)
+     * - Exception propagation through futures
+     *
+     * @param pool Thread pool for parallel execution
+     */
+    void executeByLevelsParallel(ThreadPool& pool)
+    {
+        for (const auto& level : mTopologicalOrder.levels)
+        {
+            // Skip empty levels
+            if (level.empty())
+            {
+                continue;
+            }
+
+            // Single reaction in level: execute directly (no parallelism overhead)
+            if (level.size() == 1)
+            {
+                size_t index = level[0];
+                auto it = mCallbacks.find(index);
+                if (it != mCallbacks.end())
+                {
+                    it->second();
+                }
+                continue;
+            }
+
+            // Multiple reactions: execute in parallel
+            std::vector<std::future<void>> futures;
+            futures.reserve(level.size());
+
+            for (size_t index : level)
+            {
+                auto it = mCallbacks.find(index);
+                if (it != mCallbacks.end())
+                {
+                    // Capture callback by value to avoid dangling references
+                    auto callback = it->second;
+                    futures.push_back(pool.enqueue([callback]() {
+                        callback();
+                    }));
+                }
+            }
+
+            // Barrier: wait for all reactions in this level to complete
+            for (auto& future : futures)
+            {
+                future.get();  // Also propagates exceptions
             }
         }
     }

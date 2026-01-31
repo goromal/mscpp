@@ -2,8 +2,10 @@
 
 #include "LogicalTime.h"
 #include "Logging.h"
+#include "ThreadPool.h"
 #include <atomic>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -31,7 +33,7 @@ class MicroService;
  * - Tag-ordered event queue (priority queue sorted by LogicalTag)
  * - Batch processing: all events at same tag processed together
  * - Deterministic execution order within each tag
- * - Single-threaded execution (Phase 2); parallelism comes later
+ * - Optional parallel execution via thread pool
  */
 
 /**
@@ -93,6 +95,17 @@ class ReactorScheduler
 {
 public:
     ReactorScheduler() = default;
+
+    /**
+     * Construct scheduler with optional thread pool for parallel execution.
+     *
+     * @param thread_pool Optional thread pool (nullptr for sequential execution)
+     */
+    explicit ReactorScheduler(std::shared_ptr<ThreadPool> thread_pool)
+        : mThreadPool(std::move(thread_pool))
+    {
+    }
+
     ~ReactorScheduler()
     {
         if (mRunning)
@@ -178,7 +191,7 @@ public:
             return;
         }
 
-        LOG_INFO("ReactorScheduler: Stopping at tag {}", mCurrentTag);
+        LOG_INFO("ReactorScheduler: Stopping at tag {}", getCurrentTag());
         mRunning = false;
     }
 
@@ -207,6 +220,33 @@ public:
         return mEventQueue.size();
     }
 
+    /**
+     * Enable or disable parallel execution.
+     * Only effective if thread pool was provided at construction.
+     *
+     * @param enabled True to enable parallel execution, false for sequential
+     */
+    void setParallelExecution(bool enabled)
+    {
+        mParallelExecutionEnabled = enabled && (mThreadPool != nullptr);
+    }
+
+    /**
+     * Check if parallel execution is enabled.
+     */
+    bool isParallelExecutionEnabled() const
+    {
+        return mParallelExecutionEnabled && (mThreadPool != nullptr);
+    }
+
+    /**
+     * Get the thread pool (if any).
+     */
+    std::shared_ptr<ThreadPool> getThreadPool() const
+    {
+        return mThreadPool;
+    }
+
 private:
     std::unordered_map<size_t, std::shared_ptr<IReactor>> mReactors;
 
@@ -219,6 +259,10 @@ private:
     LogicalTag mCurrentTag{LogicalTime(0), 0};
     std::atomic<uint64_t> mLogicalTimeNanos{0};
     std::atomic<uint32_t> mLogicalMicrostep{0};
+
+    // Optional thread pool for parallel execution
+    std::shared_ptr<ThreadPool> mThreadPool{nullptr};
+    bool mParallelExecutionEnabled{false};
 
     /**
      * Schedule initial heartbeat events for all reactors at tag (0, 0).
@@ -240,7 +284,7 @@ private:
      *
      * Algorithm:
      * 1. Dequeue all events at current tag
-     * 2. Execute them in reactor ID order (deterministic)
+     * 2. Execute them (sequential or parallel based on configuration)
      * 3. Advance to next tag
      * 4. Repeat until stopped or queue empty
      */
@@ -278,28 +322,103 @@ private:
 
 #if LOG_LOGICAL_TIME
             LOG_DEBUG("ReactorScheduler: Processing {} events at tag {}",
-                     eventsAtCurrentTag.size(), mCurrentTag);
+                     eventsAtCurrentTag.size(), getCurrentTag());
 #endif
 
-            // Execute all events at this tag in reactor ID order (deterministic)
-            // Note: events are already sorted by reactor_id due to priority queue ordering
-            for (auto& event : eventsAtCurrentTag)
+            // Execute events at this tag
+            if (isParallelExecutionEnabled() && eventsAtCurrentTag.size() > 1)
             {
-                // Check if stop was requested before executing this event
-                if (!mRunning)
-                {
-                    break;
-                }
-
-#if LOG_LOGICAL_TIME
-                LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}: {}",
-                         event.reactor_id, event.tag, event.debug_info);
-#endif
-                event.reaction();
+                executeEventsParallel(eventsAtCurrentTag);
+            }
+            else
+            {
+                executeEventsSequential(eventsAtCurrentTag);
             }
         }
 
-        LOG_INFO("ReactorScheduler: Stopped at tag {}", mCurrentTag);
+        LOG_INFO("ReactorScheduler: Stopped at tag {}", getCurrentTag());
+    }
+
+    /**
+     * Execute events sequentially in reactor ID order (deterministic).
+     */
+    void executeEventsSequential(std::vector<TaggedEvent>& events)
+    {
+        // Events are already sorted by reactor_id due to priority queue ordering
+        for (auto& event : events)
+        {
+            if (!mRunning)
+            {
+                break;
+            }
+
+#if LOG_LOGICAL_TIME
+            LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}: {}",
+                     event.reactor_id, event.tag, event.debug_info);
+#endif
+            event.reaction();
+        }
+    }
+
+    /**
+     * Execute events in parallel using thread pool.
+     *
+     * NOTE: This parallel execution is at the TAG level, not the reaction level.
+     * For true reaction-level parallelism, use ReactionExecutor::executeByLevelsParallel().
+     *
+     * This method executes independent events (different reactors) at the same tag
+     * in parallel. Events for the same reactor are still sequential.
+     */
+    void executeEventsParallel(std::vector<TaggedEvent>& events)
+    {
+        if (!mThreadPool)
+        {
+            executeEventsSequential(events);
+            return;
+        }
+
+        // Group events by reactor ID (events for same reactor must be sequential)
+        std::unordered_map<size_t, std::vector<TaggedEvent*>> eventsByReactor;
+        for (auto& event : events)
+        {
+            eventsByReactor[event.reactor_id].push_back(&event);
+        }
+
+        // If only one reactor, no parallelism possible
+        if (eventsByReactor.size() == 1)
+        {
+            executeEventsSequential(events);
+            return;
+        }
+
+        // Execute events for each reactor in parallel
+        std::vector<std::future<void>> futures;
+        futures.reserve(eventsByReactor.size());
+
+        for (auto& [reactor_id, reactor_events] : eventsByReactor)
+        {
+            futures.push_back(mThreadPool->enqueue([this, reactor_events]() {
+                for (TaggedEvent* event : reactor_events)
+                {
+                    if (!mRunning)
+                    {
+                        break;
+                    }
+
+#if LOG_LOGICAL_TIME
+                    LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}: {}",
+                             event->reactor_id, event->tag, event->debug_info);
+#endif
+                    event->reaction();
+                }
+            }));
+        }
+
+        // Wait for all reactors to complete (barrier synchronization)
+        for (auto& future : futures)
+        {
+            future.get();  // Also propagates exceptions
+        }
     }
 };
 

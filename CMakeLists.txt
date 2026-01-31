@@ -64,6 +64,7 @@ if (BUILD_TESTS)
         tests/ReactionHybridTest.cpp
         tests/PortTest.cpp
         tests/TraceTest.cpp
+        tests/ParallelTest.cpp
     )
     target_include_directories(${UNIT_TEST} PRIVATE
         tests/example-services
