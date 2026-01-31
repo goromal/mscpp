@@ -54,7 +54,7 @@ struct HeartbeatReactionC : public Reaction<
 {
     void execute(StoreC& store,
                  PortsC& ports,
-                 const MicroServiceContainer<>& container,
+                 const MicroServiceContainer<>& /*container*/,
                  HeartbeatInput& input)
     {
         store.state = "running";
@@ -81,7 +81,7 @@ public:
                                   MicroServiceContainer<>, ReactionsC>;
     using Base::Base;  // Inherit constructors
 
-    void executeHeartbeat(const LogicalTag& tag)
+    void executeHeartbeat(const LogicalTag& /*tag*/)
     {
         HeartbeatInput input;
         HeartbeatReactionC reaction;
@@ -124,7 +124,7 @@ struct HeartbeatReactionD : public Reaction<
 {
     void execute(StoreD& store,
                  PortsD& ports,
-                 const MicroServiceContainer<>& container,
+                 const MicroServiceContainer<>& /*container*/,
                  HeartbeatInput& input)
     {
         // Check if the input port has a value
@@ -156,7 +156,7 @@ public:
                                   MicroServiceContainer<>, ReactionsD>;
     using Base::Base;
 
-    void executeHeartbeat(const LogicalTag& tag)
+    void executeHeartbeat(const LogicalTag& /*tag*/)
     {
         HeartbeatInput input;
         HeartbeatReactionD reaction;
@@ -203,7 +203,7 @@ struct TransformReactionE : public Reaction<
 {
     void execute(StoreE& store,
                  PortsE& ports,
-                 const MicroServiceContainer<>& container,
+                 const MicroServiceContainer<>& /*container*/,
                  HeartbeatInput& input)
     {
         if (ports.value_in.is_present())
@@ -235,7 +235,7 @@ public:
                                   MicroServiceContainer<>, ReactionsE>;
     using Base::Base;
 
-    void executeHeartbeat(const LogicalTag& tag)
+    void executeHeartbeat(const LogicalTag& /*tag*/)
     {
         HeartbeatInput input;
         TransformReactionE reaction;

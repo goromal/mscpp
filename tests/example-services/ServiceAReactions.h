@@ -42,7 +42,7 @@ struct HeartbeatReactionA : public services::Reaction<
     services::TypeList<>   // Dependencies
 >
 {
-    void execute(StoreAReactions& store, const ContainerTypeAReactions& container, HeartbeatInput& input)
+    void execute(StoreAReactions& store, const ContainerTypeAReactions& /*container*/, HeartbeatInput& /*input*/)
     {
         store.state = "init";
         store.input = "heartbeat";
@@ -64,7 +64,7 @@ struct IncrementReactionA : public services::Reaction<
     services::TypeList<>   // Dependencies
 >
 {
-    void execute(StoreAReactions& store, const ContainerTypeAReactions& container, IncrementInput& input)
+    void execute(StoreAReactions& store, const ContainerTypeAReactions& /*container*/, IncrementInput& input)
     {
         store.state = "init";
         store.input = "increment";
@@ -88,7 +88,7 @@ struct TransitionReactionA : public services::Reaction<
     services::TypeList<>   // Dependencies
 >
 {
-    void execute(StoreAReactions& store, const ContainerTypeAReactions& container, TransitionInput& input)
+    void execute(StoreAReactions& store, const ContainerTypeAReactions& /*container*/, TransitionInput& input)
     {
         store.state = "init";
         store.input = "transition";

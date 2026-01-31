@@ -123,9 +123,9 @@ TEST_CASE("Dependency Graph Construction", "[reactions][graph]")
     {
         services::ReactionGraph graph;
 
-        size_t r0 = graph.addReaction("A::0", 0, 0);
-        size_t r1 = graph.addReaction("A::1", 0, 1);
-        size_t r2 = graph.addReaction("A::2", 0, 2);
+        graph.addReaction("A::0", 0, 0);
+        graph.addReaction("A::1", 0, 1);
+        graph.addReaction("A::2", 0, 2);
 
         // Create cycle: r0 -> r1 -> r2 -> r0
         graph.addDependency(0, 1);
@@ -141,19 +141,19 @@ TEST_CASE("Dependency Graph Construction", "[reactions][graph]")
         services::ReactionGraph graph;
 
         // Level 0: r0, r1 (no dependencies)
-        size_t r0 = graph.addReaction("A::0", 0, 0);
-        size_t r1 = graph.addReaction("A::1", 0, 1);
+        graph.addReaction("A::0", 0, 0);
+        graph.addReaction("A::1", 0, 1);
 
         // Level 1: r2 depends on r0
-        size_t r2 = graph.addReaction("A::2", 0, 2);
+        graph.addReaction("A::2", 0, 2);
         graph.addDependency(2, 0);
 
         // Level 2: r3 depends on r2
-        size_t r3 = graph.addReaction("A::3", 0, 3);
+        graph.addReaction("A::3", 0, 3);
         graph.addDependency(3, 2);
 
         // Level 1: r4 depends on r1
-        size_t r4 = graph.addReaction("A::4", 0, 4);
+        graph.addReaction("A::4", 0, 4);
         graph.addDependency(4, 1);
 
         auto topOrder = graph.computeTopologicalOrder();
@@ -192,7 +192,7 @@ TEST_CASE("ReactorWithReactions", "[reactions][reactor]")
         auto reactor = std::make_shared<ServiceAReactions>();
 
         REQUIRE(reactor->getName() == "ServiceA_Reactions");
-        REQUIRE(reactor->getId() >= 0);
+        REQUIRE(reactor->getId() == reactor->getId());  // Just verify it's accessible
 
         // Initialize
         reactor->initialize();

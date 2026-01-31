@@ -205,7 +205,7 @@ TEST_CASE("Hybrid: Pure Functions + Reaction Metadata", "[reactions][hybrid][pur
         // Register reactions (would be automatic in real system)
         size_t r0 = graph.addReaction("CounterReactor::0", 0, 0);  // IncrementReaction
         size_t r1 = graph.addReaction("CounterReactor::1", 0, 1);  // DoubleReaction
-        size_t r2 = graph.addReaction("CounterReactor::2", 0, 2);  // ResetReaction
+        graph.addReaction("CounterReactor::2", 0, 2);  // ResetReaction (unused)
 
         // Add dependency: DoubleReaction depends on IncrementReaction
         graph.addDependency(r1, r0);

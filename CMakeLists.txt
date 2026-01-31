@@ -49,6 +49,9 @@ target_compile_definitions(${PROJ_NAME} INTERFACE
 )
 
 if (BUILD_TESTS)
+    # nlohmann_json for trace serialization (try to find, but not required)
+    find_package(nlohmann_json QUIET)
+
     # All unit tests combined
     set(UNIT_TEST unit-tests)
     add_executable(${UNIT_TEST}
@@ -60,6 +63,7 @@ if (BUILD_TESTS)
         tests/ReactionTest.cpp
         tests/ReactionHybridTest.cpp
         tests/PortTest.cpp
+        tests/TraceTest.cpp
     )
     target_include_directories(${UNIT_TEST} PRIVATE
         tests/example-services
@@ -68,6 +72,10 @@ if (BUILD_TESTS)
         ${PROJ_NAME}
         Catch2::Catch2
     )
+    # Link nlohmann_json if found
+    if(nlohmann_json_FOUND)
+        target_link_libraries(${UNIT_TEST} nlohmann_json::nlohmann_json)
+    endif()
     add_test(NAME ${UNIT_TEST} COMMAND ${UNIT_TEST})
 
     # add_custom_command(

@@ -221,7 +221,7 @@ public:
         return false;
     }
 
-    bool processNextInput(const LogicalTag& tag) override
+    bool processNextInput(const LogicalTag& /*tag*/) override
     {
         // Not used in reaction-based model
         return false;
@@ -240,7 +240,7 @@ public:
         registerCallbacksImpl(executor, std::make_index_sequence<ReactionSetType::size>{});
     }
 
-    bool isReactionTriggered(size_t reaction_index, const LogicalTag& tag) override
+    bool isReactionTriggered(size_t /*reaction_index*/, const LogicalTag& /*tag*/) override
     {
         // Check if reaction is triggered
         // For now, always return false (to be implemented based on input presence)
@@ -295,8 +295,6 @@ private:
     template<size_t I>
     void registerReactionInGraph(ReactionGraph& graph)
     {
-        using ReactionType = std::tuple_element_t<I, typename ReactionSetType::AllReactions::tuple>;
-
         std::string reaction_id = getName() + "::" + std::to_string(I);
         size_t global_index = graph.addReaction(reaction_id, mReactorId, I);
 
@@ -304,7 +302,7 @@ private:
     }
 
     template<size_t I>
-    void addReactionDependencies(ReactionGraph& graph)
+    void addReactionDependencies(ReactionGraph& /*graph*/)
     {
         // Dependencies are declared in the Reaction type
         // For now, we skip adding explicit dependencies
@@ -331,10 +329,6 @@ private:
     template<size_t I>
     void executeReactionAtIndex()
     {
-        using ReactionType = std::tuple_element_t<I, typename ReactionSetType::AllReactions::tuple>;
-
-        auto& reaction = std::get<I>(mReactions.mReactions);
-
         LOG_TRACE("{}: Executing reaction {}", getName(), I);
 
         // Execute reaction (signature depends on triggers)
@@ -343,7 +337,7 @@ private:
     }
 
     template<size_t... Is>
-    void executeReactionImpl(size_t index, const LogicalTag& tag, std::index_sequence<Is...>)
+    void executeReactionImpl(size_t index, const LogicalTag& /*tag*/, std::index_sequence<Is...>)
     {
         ((index == Is ? (executeReactionAtIndex<Is>(), 0) : 0), ...);
     }
