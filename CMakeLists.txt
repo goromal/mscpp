@@ -78,13 +78,13 @@ if (BUILD_TESTS)
     endif()
     add_test(NAME ${UNIT_TEST} COMMAND ${UNIT_TEST})
 
-    # add_custom_command(
-    #     TARGET ${UNIT_TEST}
-    #     COMMENT "Run all unit tests"
-    #     POST_BUILD
-    #     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    #     COMMAND ${UNIT_TEST}
-    # )
+    add_custom_command(
+        TARGET ${UNIT_TEST}
+        COMMENT "Run all unit tests"
+        POST_BUILD
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMAND ${UNIT_TEST}
+    )
 
     include(CTest)
     include(Catch)
