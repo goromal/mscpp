@@ -234,40 +234,27 @@ public:
                                         MicroServiceContainer<>, StatesFSM>;
     using Base::Base;  // Inherit constructors
 
-    /**
-     * Execute heartbeat
-     */
-    void executeHeartbeat(const LogicalTag& tag)
+    void doHeartbeat(const LogicalTag& /*tag*/) override
     {
         HeartbeatInput input;
         executeInput(input);
     }
 
-    /**
-     * Execute increment
-     */
     void executeIncrement()
     {
         IncrementInput input;
         executeInput(input);
     }
 
-    /**
-     * Execute transition
-     */
     void executeTransition(size_t target_state)
     {
         TransitionInput input(target_state);
         executeInput(input);
     }
 
-    /**
-     * Clear ports at end of tag
-     */
-    void clearPorts()
+    void clearPorts() override
     {
         mPorts.value_in.clear();
-        // Output ports don't need clearing
     }
 };
 
@@ -381,7 +368,7 @@ public:
                                   MicroServiceContainer<>, ReactionsG>;
     using Base::Base;
 
-    void executeHeartbeat(const LogicalTag& tag)
+    void doHeartbeat(const LogicalTag& /*tag*/) override
     {
         HeartbeatInput input;
         AddReactionG reaction;
@@ -395,7 +382,7 @@ public:
         reaction.execute(mStore, mPorts, mContainer, input);
     }
 
-    void clearPorts()
+    void clearPorts() override
     {
         mPorts.operand_in.clear();
     }

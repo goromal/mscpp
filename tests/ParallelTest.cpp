@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include <mscpp/ThreadPool.h>
+#include <mscpp/internal/ThreadPool.h>
 #include <mscpp/ReactionGraph.h>
 #include <mscpp/ReactorScheduler.h>
 #include <mscpp/LogicalTime.h>

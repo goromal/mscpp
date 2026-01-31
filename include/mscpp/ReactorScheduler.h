@@ -2,7 +2,7 @@
 
 #include "LogicalTime.h"
 #include "Logging.h"
-#include "ThreadPool.h"
+#include "internal/ThreadPool.h"
 #include <atomic>
 #include <functional>
 #include <future>

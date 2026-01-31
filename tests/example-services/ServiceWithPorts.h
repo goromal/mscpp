@@ -81,7 +81,7 @@ public:
                                   MicroServiceContainer<>, ReactionsC>;
     using Base::Base;  // Inherit constructors
 
-    void executeHeartbeat(const LogicalTag& /*tag*/)
+    void doHeartbeat(const LogicalTag& /*tag*/) override
     {
         HeartbeatInput input;
         HeartbeatReactionC reaction;
@@ -156,14 +156,14 @@ public:
                                   MicroServiceContainer<>, ReactionsD>;
     using Base::Base;
 
-    void executeHeartbeat(const LogicalTag& /*tag*/)
+    void doHeartbeat(const LogicalTag& /*tag*/) override
     {
         HeartbeatInput input;
         HeartbeatReactionD reaction;
         reaction.execute(mStore, mPorts, mContainer, input);
     }
 
-    void clearPorts()
+    void clearPorts() override
     {
         mPorts.counter_in.clear();
     }
@@ -235,17 +235,16 @@ public:
                                   MicroServiceContainer<>, ReactionsE>;
     using Base::Base;
 
-    void executeHeartbeat(const LogicalTag& /*tag*/)
+    void doHeartbeat(const LogicalTag& /*tag*/) override
     {
         HeartbeatInput input;
         TransformReactionE reaction;
         reaction.execute(mStore, mPorts, mContainer, input);
     }
 
-    void clearPorts()
+    void clearPorts() override
     {
         mPorts.value_in.clear();
-        // Note: output ports don't need clearing (they're write-only)
     }
 };
 

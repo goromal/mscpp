@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LogicalTime.h"
+#include "../LogicalTime.h"
 #include <string>
 #include <vector>
 #include <variant>

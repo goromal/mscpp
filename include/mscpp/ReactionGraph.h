@@ -3,7 +3,7 @@
 #include "Reaction.h"
 #include "LogicalTime.h"
 #include "Logging.h"
-#include "ThreadPool.h"
+#include "internal/ThreadPool.h"
 #include <algorithm>
 #include <vector>
 #include <unordered_map>

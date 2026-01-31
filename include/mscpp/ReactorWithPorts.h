@@ -2,17 +2,26 @@
 
 #include "Ports.h"
 #include "Reaction.h"
+#include "ReactorScheduler.h"
 #include "MicroServiceContainer.h"
 #include <string>
+#include <memory>
 
 /**
  * ReactorWithPorts - Template base class for reactors using port-based I/O
  *
- * Eliminates boilerplate by providing common functionality:
- * - Store accessor methods
- * - Ports accessor methods
- * - Name method
- * - Reaction execution support
+ * Inherits from IReactor so that port-based services can be registered
+ * directly with the ReactorScheduler — no external adapter needed.
+ *
+ * Lifecycle when driven by the scheduler:
+ *   1. Scheduler calls executeHeartbeat(tag)  [IReactor virtual]
+ *   2. Base class calls doHeartbeat(tag)      [pure virtual, subclass logic]
+ *   3. Base class calls clearPorts()          [resets input presence]
+ *   4. Base class reschedules next heartbeat at tag + heartbeatDuration()
+ *
+ * Lifecycle when called directly in unit tests (no scheduler attached):
+ *   executeHeartbeat(tag) just calls doHeartbeat(tag).
+ *   No rescheduling or port clearing — the caller controls both.
  *
  * Template Parameters:
  * - Name: Reactor name (compile-time string constant)
@@ -26,21 +35,30 @@
  *                                              PortsMyReactor, ContainerType> {
  *   public:
  *       using Base = ReactorWithPorts<...>;
- *       using Base::Base;  // Inherit constructors
+ *       using Base::Base;
  *
- *       // Define reactions or FSM step functions
+ *       // Implement the heartbeat logic (reactions or direct port manipulation)
+ *       void doHeartbeat(const LogicalTag& tag) override { ... }
+ *
+ *       // Implement clearPorts() to reset all input ports
+ *       void clearPorts() override { mPorts.some_input.clear(); ... }
  *   };
  */
 
 namespace services
 {
 
+// Forward declare so MicroService.h's global counter is visible
+#if REACTOR_MODE
+std::atomic<size_t>& getGlobalReactorIdCounter();
+#endif
+
 template<const char* Name,
          typename StoreType,
          typename PortsType,
          typename ContainerType,
          typename ReactionSetType = void>
-class ReactorWithPorts
+class ReactorWithPorts : public IReactor
 {
 public:
     using Store = StoreType;
@@ -54,6 +72,9 @@ public:
         : mStore{}
         , mPorts{}
     {
+#if REACTOR_MODE
+        mReactorId = getGlobalReactorIdCounter().fetch_add(1);
+#endif
     }
 
     ReactorWithPorts(const Container& container)
@@ -61,25 +82,84 @@ public:
         , mPorts{}
         , mContainer(container)
     {
+#if REACTOR_MODE
+        mReactorId = getGlobalReactorIdCounter().fetch_add(1);
+#endif
     }
 
-    // Store accessors
+    virtual ~ReactorWithPorts() = default;
+
+    // ── IReactor interface ───────────────────────────────────────────
+
+    size_t getId() const override
+    {
+        return mReactorId;
+    }
+
+    std::string getName() const override
+    {
+        return std::string(Name);
+    }
+
+    void initialize() override
+    {
+        // Default: nothing to do.  Subclasses may override to seed state.
+    }
+
+    /**
+     * IReactor entry point called by the scheduler.
+     *
+     * Calls doHeartbeat() for the subclass logic, then — if a scheduler
+     * is attached — clears input ports and reschedules the next heartbeat.
+     * When no scheduler is attached (unit-test usage) this is a bare
+     * delegation to doHeartbeat() with no side effects.
+     */
+    void executeHeartbeat(const LogicalTag& tag) override
+    {
+        doHeartbeat(tag);
+
+        if (mScheduler)
+        {
+            clearPorts();
+
+            LogicalTag next = tag.advance_time(heartbeatDuration());
+            mScheduler->scheduleEvent(next, mReactorId, [this, next]() {
+                this->executeHeartbeat(next);
+            }, getName() + " heartbeat");
+        }
+    }
+
+    bool hasPendingInputs() const override { return false; }
+    bool processNextInput(const LogicalTag&) override { return false; }
+
+    // ── Scheduler wiring ─────────────────────────────────────────────
+
+    /**
+     * Attach a scheduler.  Must be called before the scheduler's run().
+     * When set, executeHeartbeat() will reschedule and clear ports.
+     */
+    void setScheduler(ReactorScheduler* scheduler)
+    {
+        mScheduler = scheduler;
+    }
+
+    // ── Accessors ────────────────────────────────────────────────────
+
     Store& getStore() { return mStore; }
     const Store& getStore() const { return mStore; }
 
-    // Ports accessors
     Ports& getPorts() { return mPorts; }
     const Ports& getPorts() const { return mPorts; }
 
-    // Container accessor
     const Container& getContainer() const { return mContainer; }
 
     /**
-     * Clear all input ports (called by scheduler at end of tag)
+     * Legacy helper — does nothing by default.
+     * Kept for backward compatibility; prefer overriding clearPorts().
      */
     void clearInputPorts()
     {
-        clearInputPortsImpl(mPorts);
+        clearPorts();
     }
 
 protected:
@@ -87,18 +167,33 @@ protected:
     Ports mPorts;
     Container mContainer;
 
-private:
+    // ── Pure virtuals for subclasses ─────────────────────────────────
+
     /**
-     * Helper to clear input ports using compile-time iteration
-     * This would need to be specialized for specific port structures
+     * Subclass heartbeat logic.  This is the only method you must override.
+     * Write your reactions or FSM dispatch here.
      */
-    template<typename P>
-    void clearInputPortsImpl(P& ports)
+    virtual void doHeartbeat(const LogicalTag& tag) = 0;
+
+    /**
+     * Reset all input ports so presence semantics are fresh for the next tag.
+     * Must clear every InputPort member in your Ports struct.
+     * Default implementation does nothing — override this.
+     */
+    virtual void clearPorts() {}
+
+    /**
+     * Heartbeat period in logical time.  Override to change the rate.
+     * Default: 10 ms.
+     */
+    virtual LogicalTime heartbeatDuration() const
     {
-        // Default: does nothing
-        // Derived classes can override or we can use SFINAE to detect
-        // and clear InputPort members
+        return LogicalTime(10'000'000);   // 10 ms
     }
+
+private:
+    size_t            mReactorId{0};
+    ReactorScheduler* mScheduler{nullptr};
 };
 
 /**

@@ -3,7 +3,7 @@
 #undef REACTOR_MODE
 #define REACTOR_MODE 1
 
-#include "mscpp/Trace.h"
+#include "mscpp/internal/Trace.h"
 #include "mscpp/ReactorScheduler.h"
 #include "mscpp/ReactorFactory.h"
 #include "mscpp/Reaction.h"
