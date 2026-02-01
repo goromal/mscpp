@@ -55,7 +55,7 @@ struct HeartbeatReactionC : public Reaction<
     void execute(StoreC& store,
                  PortsC& ports,
                  const MicroServiceContainer<>& /*container*/,
-                 HeartbeatInput& input)
+                 HeartbeatInput& /*input*/)
     {
         store.state = "running";
         store.counter++;
@@ -63,8 +63,6 @@ struct HeartbeatReactionC : public Reaction<
         // Output the counter value on the port
         // This schedules an event at next microstep
         ports.counter_out.set(store.counter);
-
-        input.setResult(EmptyResult{});
     }
 };
 
@@ -125,7 +123,7 @@ struct HeartbeatReactionD : public Reaction<
     void execute(StoreD& store,
                  PortsD& ports,
                  const MicroServiceContainer<>& /*container*/,
-                 HeartbeatInput& input)
+                 HeartbeatInput& /*input*/)
     {
         // Check if the input port has a value
         if (ports.counter_in.is_present())
@@ -138,8 +136,6 @@ struct HeartbeatReactionD : public Reaction<
         {
             store.state = "waiting";
         }
-
-        input.setResult(EmptyResult{});
     }
 };
 
@@ -204,7 +200,7 @@ struct TransformReactionE : public Reaction<
     void execute(StoreE& store,
                  PortsE& ports,
                  const MicroServiceContainer<>& /*container*/,
-                 HeartbeatInput& input)
+                 HeartbeatInput& /*input*/)
     {
         if (ports.value_in.is_present())
         {
@@ -217,8 +213,6 @@ struct TransformReactionE : public Reaction<
         {
             store.state = "waiting";
         }
-
-        input.setResult(EmptyResult{});
     }
 };
 

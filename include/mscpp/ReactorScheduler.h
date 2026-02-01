@@ -18,9 +18,15 @@
 namespace services
 {
 
-// Forward declarations
-template<const char*, typename, typename, typename, typename, size_t, size_t>
-class MicroService;
+// Global reactor ID counter shared by all reactor base classes.
+// Defined here (rather than in any single reactor header) so that
+// ReactorWithPorts, ReactorWithReactions, etc. can all participate
+// in the same ID space without circular includes.
+inline std::atomic<size_t>& getGlobalReactorIdCounter()
+{
+    static std::atomic<size_t> nextId{0};
+    return nextId;
+}
 
 /**
  * Phase 2: Centralized Reactor Scheduler

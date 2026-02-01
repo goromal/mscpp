@@ -1,17 +1,11 @@
 #include <catch2/catch.hpp>
 
-#undef REACTOR_MODE
-#define REACTOR_MODE 1
-
 #include "mscpp/internal/Trace.h"
 #include "mscpp/ReactorScheduler.h"
-#include "mscpp/ReactorFactory.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/ReactionGraph.h"
 #include "mscpp/ReactorWithPorts.h"  // For DECLARE_REACTOR_NAME
 #include "example-services/Inputs.h"
-#include "example-services/ServiceA.h"
-#include "example-services/ServiceB.h"
 
 #include <random>
 #include <thread>
@@ -44,10 +38,9 @@ struct TracedHeartbeatReaction {
 };
 
 struct TracedIncrementReaction {
-    void execute(TracedStore& store, TracedContainer& /*container*/, IncrementInput& input) {
+    void execute(TracedStore& store, TracedContainer& /*container*/, IncrementInput& /*input*/) {
         store.counter += 10;
         store.last_event = "increment";
-        input.setResult(BooleanResult{true});
     }
 };
 

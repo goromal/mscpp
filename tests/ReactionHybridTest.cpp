@@ -9,10 +9,6 @@
 #include <iostream>
 #include <thread>
 
-// Force reactor mode for this test file
-#undef REACTOR_MODE
-#define REACTOR_MODE 1
-
 #include "example-services/Inputs.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/ReactionGraph.h"
@@ -51,10 +47,9 @@ using EmptyContainer = services::MicroServiceContainer<>;
 namespace PureStateFunctions {
 
     // Increment the counter
-    void incrementCounter(CounterStore& store, IncrementInput& input) {
+    void incrementCounter(CounterStore& store, IncrementInput& /*input*/) {
         store.value++;
         store.last_operation = "increment";
-        input.setResult(BooleanResult{true});
     }
 
     // Double the counter
@@ -239,10 +234,9 @@ namespace FSMStateFunctions {
             store.last_operation = "idle_heartbeat";
         }
 
-        static void onIncrement(CounterStore& store, IncrementInput& input) {
+        static void onIncrement(CounterStore& store, IncrementInput& /*input*/) {
             store.value++;
             store.last_operation = "idle_increment";
-            input.setResult(BooleanResult{true});
         }
     };
 
@@ -252,10 +246,9 @@ namespace FSMStateFunctions {
             store.last_operation = "active_heartbeat";
         }
 
-        static void onIncrement(CounterStore& store, IncrementInput& input) {
+        static void onIncrement(CounterStore& store, IncrementInput& /*input*/) {
             store.value += 2;  // Double increment when active
             store.last_operation = "active_increment";
-            input.setResult(BooleanResult{true});
         }
     };
 }

@@ -42,7 +42,6 @@ target_include_directories(${PROJ_NAME} INTERFACE
 )
 target_link_libraries(${PROJ_NAME} INTERFACE spdlog::spdlog_header_only)
 target_compile_definitions(${PROJ_NAME} INTERFACE
-    REACTOR_MODE=1
     $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE>
     $<$<CONFIG:RelWithDebInfo>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO>
     $<$<CONFIG:Release>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_WARN>
@@ -56,16 +55,13 @@ if (BUILD_TESTS)
     set(UNIT_TEST unit-tests)
     add_executable(${UNIT_TEST}
         tests/example-services/Inputs.cpp
-        tests/example-services/ServiceA.cpp
-        tests/example-services/ServiceB.cpp
-        tests/ServiceTest.cpp
-        tests/ReactorTest.cpp
         tests/ReactionTest.cpp
         tests/ReactionHybridTest.cpp
         tests/PortTest.cpp
         tests/TraceTest.cpp
         tests/ParallelTest.cpp
         tests/RoboticsE2ETest.cpp
+        tests/ContainerTest.cpp
     )
     target_include_directories(${UNIT_TEST} PRIVATE
         tests/example-services

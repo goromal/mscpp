@@ -87,23 +87,11 @@ inline std::ostream& operator<<(std::ostream& os, const LogicalTag& tag)
 }
 
 /**
- * Configuration for logical time tracking and reactor mode.
- *
- * This allows gradual migration:
- * - ENABLE_LOGICAL_TIME: Track logical time alongside physical time (Phase 1+)
- * - LOG_LOGICAL_TIME: Output logical time in logs for debugging
- * - REACTOR_MODE: Use centralized scheduler instead of per-service threads (Phase 2+)
+ * Logging control for logical-time events.
+ * Set LOG_LOGICAL_TIME=0 to suppress per-event trace output.
  */
-#ifndef ENABLE_LOGICAL_TIME
-#define ENABLE_LOGICAL_TIME 1  // Enable by default in Phase 1
-#endif
-
 #ifndef LOG_LOGICAL_TIME
-#define LOG_LOGICAL_TIME 1  // Enable logging by default for debugging
-#endif
-
-#ifndef REACTOR_MODE
-#define REACTOR_MODE 0  // Disabled by default (use actor mode)
+#define LOG_LOGICAL_TIME 1
 #endif
 
 } // namespace services

@@ -140,7 +140,7 @@ struct IMUHeartbeatReaction : public Reaction<
     void execute(StoreIMU& store,
                  PortsIMU& ports,
                  const MicroServiceContainer<>& /*container*/,
-                 HeartbeatInput& input)
+                 HeartbeatInput& /*input*/)
     {
         store.tick++;
 
@@ -154,8 +154,6 @@ struct IMUHeartbeatReaction : public Reaction<
 
         store.last_reading = reading;
         ports.raw_imu.set(reading);
-
-        input.setResult(EmptyResult{});
     }
 };
 
@@ -197,6 +195,9 @@ struct StoreKalman
     // Reset bookkeeping
     int             reset_count{0};
 
+    // Staleness guard: last IMU tick we actually integrated
+    int             last_seen_tick{-1};
+
     // Simple "filter": accumulate position from accelerometer ticks
     double          pos_x{0.0};
     double          pos_y{0.0};
@@ -212,6 +213,10 @@ struct PortsKalman
 
 class KalmanFilter;  // forward decl
 
+// The KalmanFilter container holds a pointer to the IMU so that its reactions
+// can inspect the IMU's store directly (e.g. staleness checks).
+using KalmanContainer = MicroServiceContainer<IMU>;
+
 // ── Reaction 0: ReadSensor (level 0) ────────────────────────────────────────
 // Latches the raw IMU reading (if present) into the store.
 struct ReadSensorReaction : public Reaction<
@@ -224,7 +229,7 @@ struct ReadSensorReaction : public Reaction<
 {
     void execute(StoreKalman& store,
                  PortsKalman& ports,
-                 const MicroServiceContainer<>& /*container*/,
+                 const KalmanContainer& container,
                  HeartbeatInput& /*input*/)
     {
         // Also handle a reset command if one arrived
@@ -236,10 +241,27 @@ struct ReadSensorReaction : public Reaction<
             store.estimate = FilteredPose{};
             store.estimate_ready = false;
             store.reset_count++;
+            store.last_seen_tick = -1;   // reset staleness tracker too
         }
 
         if (ports.raw_imu.is_present())
         {
+            // Staleness guard: if the container holds an IMU reference, skip
+            // integration when its tick hasn't advanced since we last saw it.
+            // This catches the case where the filter heartbeats faster than the
+            // sensor, or the same port value is delivered twice.
+            auto imu_ptr = container.get<IMU>();
+            if (imu_ptr)
+            {
+                int current_tick = imu_ptr->getStore().tick;
+                if (current_tick == store.last_seen_tick)
+                {
+                    store.has_raw = false;   // stale – skip this cycle
+                    return;
+                }
+                store.last_seen_tick = current_tick;
+            }
+
             store.latched_raw = ports.raw_imu.get();
             store.has_raw     = true;
         }
@@ -262,7 +284,7 @@ struct FilterPoseReaction : public Reaction<
 {
     void execute(StoreKalman& store,
                  PortsKalman& /*ports*/,
-                 const MicroServiceContainer<>& /*container*/,
+                 const KalmanContainer& /*container*/,
                  HeartbeatInput& /*input*/)
     {
         if (!store.has_raw)
@@ -290,15 +312,13 @@ struct PublishEstimateReaction : public Reaction<
 {
     void execute(StoreKalman& store,
                  PortsKalman& ports,
-                 const MicroServiceContainer<>& /*container*/,
-                 HeartbeatInput& input)
+                 const KalmanContainer& /*container*/,
+                 HeartbeatInput& /*input*/)
     {
         if (store.estimate_ready)
         {
             ports.filtered_pose.set(store.estimate);
         }
-
-        input.setResult(EmptyResult{});
     }
 };
 
@@ -307,11 +327,11 @@ using ReactionsKalman = ReactionSet<ReadSensorReaction,
                                     PublishEstimateReaction>;
 
 class KalmanFilter : public ReactorWithPorts<NameKalmanFilter, StoreKalman, PortsKalman,
-                                             MicroServiceContainer<>, ReactionsKalman>
+                                             KalmanContainer, ReactionsKalman>
 {
 public:
     using Base = ReactorWithPorts<NameKalmanFilter, StoreKalman, PortsKalman,
-                                  MicroServiceContainer<>, ReactionsKalman>;
+                                  KalmanContainer, ReactionsKalman>;
     using Base::Base;
 
     /**
@@ -380,7 +400,7 @@ struct IdleStatePlanner : public State<IdleStatePlanner, 0>
 {
     size_t step(StorePlanner& store, PortsPlanner& ports,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& input)
+                HeartbeatInput& /*input*/)
     {
         if (ports.filtered_pose.is_present())
         {
@@ -392,11 +412,9 @@ struct IdleStatePlanner : public State<IdleStatePlanner, 0>
         {
             store.current_waypoint = ports.waypoint_cmd.get();
             store.has_waypoint     = true;
-            input.setResult(EmptyResult{});
             return 1;   // transition to Planning
         }
 
-        input.setResult(EmptyResult{});
         return index();   // stay Idle
     }
 };
@@ -409,7 +427,7 @@ struct PlanningStatePlanner : public State<PlanningStatePlanner, 1>
 {
     size_t step(StorePlanner& store, PortsPlanner& /*ports*/,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& input)
+                HeartbeatInput& /*input*/)
     {
         // Toy planner: velocity = (waypoint - pose), clamped to unit magnitude
         double dx = store.current_waypoint.target_x - store.current_pose.x;
@@ -424,7 +442,6 @@ struct PlanningStatePlanner : public State<PlanningStatePlanner, 1>
             store.last_velocity = VelocityCommand{0.0, 0.0};
         }
 
-        input.setResult(EmptyResult{});
         return 2;   // transition to Executing
     }
 };
@@ -436,12 +453,11 @@ struct ExecutingStatePlanner : public State<ExecutingStatePlanner, 2>
 {
     size_t step(StorePlanner& store, PortsPlanner& ports,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& input)
+                HeartbeatInput& /*input*/)
     {
         ports.velocity_cmd.set(store.last_velocity);
         store.commands_emitted++;
 
-        input.setResult(EmptyResult{});
         return IdleStatePlanner::index();   // back to Idle
     }
 };
@@ -1268,5 +1284,136 @@ TEST_CASE("Robotics E2E: Daemon-style scheduler-driven run", "[robotics][daemon]
         REQUIRE(p1.last_velocity.vy          == p2.last_velocity.vy);
         REQUIRE(p1.current_waypoint.target_x == p2.current_waypoint.target_x);
         REQUIRE(p1.current_waypoint.target_y == p2.current_waypoint.target_y);
+    }
+}
+
+// ===========================================================================
+// TEST 11 – KalmanFilter staleness guard via container-held IMU reference
+// ===========================================================================
+//
+// KalmanContainer holds a shared_ptr<IMU>.  ReadSensorReaction reads
+// imu->getStore().tick to detect duplicate / stale readings: if the IMU's tick
+// hasn't advanced since the filter last integrated, the filter skips that
+// heartbeat.  This exercises the container's get<>() path at runtime and
+// verifies that cross-reactor store inspection actually influences behaviour.
+//
+// ===========================================================================
+
+TEST_CASE("Robotics E2E: KalmanFilter staleness guard via container IMU",
+          "[robotics][kalman][container][staleness]")
+{
+    SECTION("Duplicate port value is skipped when IMU tick is unchanged")
+    {
+        auto imu = std::make_shared<IMU>();
+        KalmanContainer container(imu);
+        KalmanFilter    kf(container);
+
+        LogicalTag tag{LogicalTime(0), 0};
+
+        // ── Tick the IMU once (tick becomes 1) and push its reading ──────
+        imu->executeHeartbeat(tag);
+        REQUIRE(imu->getStore().tick == 1);
+
+        transferPort(imu->getPorts().raw_imu, kf.getPorts().raw_imu);
+
+        // First KF heartbeat: tick=1 is new → integrates normally
+        kf.executeHeartbeat(tag);
+        REQUIRE(kf.getStore().last_seen_tick == 1);
+        REQUIRE(kf.getStore().estimate_ready);
+        REQUIRE(kf.getStore().pos_x == Approx(1.0));   // accel_x at tick 1
+
+        double pos_x_after_first = kf.getStore().pos_x;
+
+        // ── Feed the *same* port value again without advancing the IMU ───
+        // (simulates duplicate delivery or filter heartbeating faster than sensor)
+        kf.getPorts().raw_imu.set(imu->getStore().last_reading);
+
+        kf.executeHeartbeat(tag);
+
+        // Staleness guard fired: pos_x must not have changed
+        REQUIRE(kf.getStore().last_seen_tick == 1);   // still 1
+        REQUIRE(kf.getStore().pos_x == pos_x_after_first);
+    }
+
+    SECTION("New IMU tick allows integration to proceed")
+    {
+        auto imu = std::make_shared<IMU>();
+        KalmanContainer container(imu);
+        KalmanFilter    kf(container);
+
+        LogicalTag tag{LogicalTime(0), 0};
+
+        // Tick 1
+        imu->executeHeartbeat(tag);
+        transferPort(imu->getPorts().raw_imu, kf.getPorts().raw_imu);
+        kf.executeHeartbeat(tag);
+        kf.clearPorts();
+
+        REQUIRE(kf.getStore().pos_x == Approx(1.0));
+
+        // Tick 2 – IMU advances
+        imu->executeHeartbeat(tag);
+        REQUIRE(imu->getStore().tick == 2);
+        transferPort(imu->getPorts().raw_imu, kf.getPorts().raw_imu);
+        kf.executeHeartbeat(tag);
+
+        // tick=2 is new → integrated: pos_x = 1 + 2 = 3
+        REQUIRE(kf.getStore().last_seen_tick == 2);
+        REQUIRE(kf.getStore().pos_x == Approx(3.0));
+    }
+
+    SECTION("Reset clears staleness tracker; next reading integrates from zero")
+    {
+        auto imu = std::make_shared<IMU>();
+        KalmanContainer container(imu);
+        KalmanFilter    kf(container);
+
+        LogicalTag tag{LogicalTime(0), 0};
+
+        // Two ticks to accumulate state
+        imu->executeHeartbeat(tag);   // tick 1
+        transferPort(imu->getPorts().raw_imu, kf.getPorts().raw_imu);
+        kf.executeHeartbeat(tag);
+        kf.clearPorts();
+
+        imu->executeHeartbeat(tag);   // tick 2
+        transferPort(imu->getPorts().raw_imu, kf.getPorts().raw_imu);
+        kf.executeHeartbeat(tag);
+        kf.clearPorts();
+
+        REQUIRE(kf.getStore().pos_x == Approx(3.0));   // 1 + 2
+
+        // Send reset + a fresh reading (tick 3)
+        imu->executeHeartbeat(tag);   // tick 3
+        kf.getPorts().reset_cmd.set(ResetCommand{true});
+        transferPort(imu->getPorts().raw_imu, kf.getPorts().raw_imu);
+        kf.executeHeartbeat(tag);
+
+        // Reset zeroed state; tick 3 is new after the reset → integrated from 0
+        REQUIRE(kf.getStore().reset_count == 1);
+        REQUIRE(kf.getStore().last_seen_tick == 3);
+        REQUIRE(kf.getStore().pos_x == Approx(3.0));   // 0 + accel_x@tick3 = 3
+    }
+
+    SECTION("Default-constructed KalmanFilter (no IMU in container) skips guard")
+    {
+        // When the container holds a null shared_ptr<IMU> the staleness check
+        // is entirely bypassed — every heartbeat with a present port integrates.
+        KalmanFilter kf;   // default ctor → KalmanContainer with null IMU ptr
+
+        LogicalTag tag{LogicalTime(0), 0};
+
+        RawIMU reading{5.0, 2.0, 9.81, 0, 0, 0.1};
+        kf.getPorts().raw_imu.set(reading);
+        kf.executeHeartbeat(tag);
+
+        REQUIRE(kf.getStore().pos_x == Approx(5.0));
+        REQUIRE(kf.getStore().last_seen_tick == -1);   // never updated
+
+        // Feed the exact same reading again – no guard, so it integrates again
+        kf.getPorts().raw_imu.set(reading);
+        kf.executeHeartbeat(tag);
+
+        REQUIRE(kf.getStore().pos_x == Approx(10.0));  // 5 + 5
     }
 }

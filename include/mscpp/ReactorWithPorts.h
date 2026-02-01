@@ -48,11 +48,6 @@
 namespace services
 {
 
-// Forward declare so MicroService.h's global counter is visible
-#if REACTOR_MODE
-std::atomic<size_t>& getGlobalReactorIdCounter();
-#endif
-
 template<const char* Name,
          typename StoreType,
          typename PortsType,
@@ -71,10 +66,9 @@ public:
     ReactorWithPorts()
         : mStore{}
         , mPorts{}
+        , mContainer(__handle_later{})
     {
-#if REACTOR_MODE
         mReactorId = getGlobalReactorIdCounter().fetch_add(1);
-#endif
     }
 
     ReactorWithPorts(const Container& container)
@@ -82,9 +76,7 @@ public:
         , mPorts{}
         , mContainer(container)
     {
-#if REACTOR_MODE
         mReactorId = getGlobalReactorIdCounter().fetch_add(1);
-#endif
     }
 
     virtual ~ReactorWithPorts() = default;

@@ -61,7 +61,6 @@ struct InitStateFSM : public State<InitStateFSM, 0>
                 HeartbeatInput& input)
     {
         store.current_state = "init";
-        input.setResult(EmptyResult{});
         return index();  // Stay in Init
     }
 
@@ -77,8 +76,6 @@ struct InitStateFSM : public State<InitStateFSM, 0>
 
         // Output state change
         ports.state_out.set(std::string("running"));
-
-        input.setResult(BooleanResult{true});
 
         // Transition to Running state
         return RunningStateFSM::index;
@@ -98,7 +95,6 @@ struct InitStateFSM : public State<InitStateFSM, 0>
             ports.state_out.set(std::string("stopped"));
         }
 
-        input.setResult(BooleanResult{true});
         return target;
     }
 };
@@ -130,7 +126,6 @@ struct RunningStateFSM : public State<RunningStateFSM, 1>
             ports.counter_out.set(store.counter);
         }
 
-        input.setResult(EmptyResult{});
         return index();  // Stay in Running
     }
 
@@ -142,7 +137,6 @@ struct RunningStateFSM : public State<RunningStateFSM, 1>
         store.counter++;
         ports.counter_out.set(store.counter);
 
-        input.setResult(BooleanResult{true});
         return index();  // Stay in Running
     }
 
@@ -160,7 +154,6 @@ struct RunningStateFSM : public State<RunningStateFSM, 1>
             ports.state_out.set(std::string("stopped"));
         }
 
-        input.setResult(BooleanResult{true});
         return target;
     }
 };
@@ -181,7 +174,6 @@ struct StoppedStateFSM : public State<StoppedStateFSM, 2>
                 HeartbeatInput& input)
     {
         store.current_state = "stopped";
-        input.setResult(EmptyResult{});
         return index();  // Stay in Stopped
     }
 
@@ -191,7 +183,6 @@ struct StoppedStateFSM : public State<StoppedStateFSM, 2>
                 IncrementInput& input)
     {
         // Rejected
-        input.setResult(BooleanResult{false});
         return index();  // Stay in Stopped
     }
 
@@ -209,7 +200,6 @@ struct StoppedStateFSM : public State<StoppedStateFSM, 2>
             ports.state_out.set(std::string("running"));
         }
 
-        input.setResult(BooleanResult{true});
         return target;
     }
 };
@@ -323,8 +313,6 @@ struct AddReactionG : public Reaction<
             // Output result
             ports.result_out.set(ServiceGLogic::getResult(store));
         }
-
-        input.setResult(EmptyResult{});
     }
 };
 
@@ -347,8 +335,6 @@ struct MultiplyReactionG : public Reaction<
 
         // Output result
         ports.result_out.set(ServiceGLogic::getResult(store));
-
-        input.setResult(BooleanResult{true});
     }
 };
 

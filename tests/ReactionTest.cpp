@@ -2,72 +2,15 @@
 #pragma GCC diagnostic ignored "-Wshadow"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 #pragma GCC diagnostic pop
 
-#include <chrono>
 #include <iostream>
-#include <thread>
+#include <vector>
 
-// Force reactor mode for this test file
-#undef REACTOR_MODE
-#define REACTOR_MODE 1
-
-#include "example-services/ServiceAReactions.h"
-#include "mscpp/ReactorWithReactions.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/ReactionGraph.h"
-
-TEST_CASE("Reaction Abstraction", "[reactions][reactions]")
-{
-    // Initialize logging
-    services::default_logger();
-
-    SECTION("Reaction metadata and traits")
-    {
-        // Test Reaction traits
-        REQUIRE(HeartbeatReactionA::index == 0);
-        REQUIRE(IncrementReactionA::index == 1);
-        REQUIRE(TransitionReactionA::index == 2);
-
-        // Test is_triggered_by
-        REQUIRE(HeartbeatReactionA::is_triggered_by<HeartbeatInput>() == true);
-        REQUIRE(HeartbeatReactionA::is_triggered_by<IncrementInput>() == false);
-
-        REQUIRE(IncrementReactionA::is_triggered_by<IncrementInput>() == true);
-        REQUIRE(IncrementReactionA::is_triggered_by<HeartbeatInput>() == false);
-
-        std::cout << "HeartbeatReactionA ID: " << HeartbeatReactionA::id() << std::endl;
-        std::cout << "IncrementReactionA ID: " << IncrementReactionA::id() << std::endl;
-    }
-
-    SECTION("ReactionSet execution dispatch")
-    {
-        ReactionsA reactions;
-        StoreAReactions store;
-        ContainerTypeAReactions container;
-
-        // Test heartbeat reaction
-        HeartbeatInput heartbeat;
-        reactions.execute(store, container, heartbeat);
-
-        REQUIRE(store.state == "init");
-        REQUIRE(store.input == "heartbeat");
-
-        // Test increment reaction
-        IncrementInput increment;
-        reactions.execute(store, container, increment);
-
-        REQUIRE(store.state == "init");
-        REQUIRE(store.input == "increment");
-        REQUIRE(store.counter == 1);
-
-        // Execute again with a new input object
-        IncrementInput increment2;
-        reactions.execute(store, container, increment2);
-        REQUIRE(store.counter == 2);
-    }
-}
 
 TEST_CASE("Dependency Graph Construction", "[reactions][graph]")
 {
@@ -180,40 +123,6 @@ TEST_CASE("Dependency Graph Construction", "[reactions][graph]")
             }
             std::cout << std::endl;
         }
-    }
-}
-
-TEST_CASE("ReactorWithReactions", "[reactions][reactor]")
-{
-    services::default_logger();
-
-    SECTION("Create reactor with reactions")
-    {
-        auto reactor = std::make_shared<ServiceAReactions>();
-
-        REQUIRE(reactor->getName() == "ServiceA_Reactions");
-        REQUIRE(reactor->getId() == reactor->getId());  // Just verify it's accessible
-
-        // Initialize
-        reactor->initialize();
-
-        std::cout << "Reactor name: " << reactor->getName() << std::endl;
-        std::cout << "Reactor ID: " << reactor->getId() << std::endl;
-        std::cout << "Number of reactions: " << ReactionsA::size << std::endl;
-    }
-
-    SECTION("Build dependency graph for reactor")
-    {
-        auto reactor = std::make_shared<ServiceAReactions>();
-        services::ReactionGraph graph;
-
-        reactor->buildDependencyGraph(graph);
-
-        // ServiceA has 3 reactions
-        REQUIRE(graph.size() == 3);
-
-        std::cout << "ServiceA reaction graph:" << std::endl;
-        graph.printGraph();
     }
 }
 
