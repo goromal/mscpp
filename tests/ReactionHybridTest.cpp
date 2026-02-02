@@ -144,8 +144,6 @@ TEST_CASE("Hybrid: Pure Functions + Reaction Metadata", "[reactions][hybrid][pur
         PureStateFunctions::resetCounter(store);
         REQUIRE(store.value == 0);
         REQUIRE(store.last_operation == "reset");
-
-        std::cout << "✓ Pure functions tested standalone (no Reaction framework)" << std::endl;
     }
 
     SECTION("Reactions are just thin wrappers over pure functions")
@@ -170,8 +168,6 @@ TEST_CASE("Hybrid: Pure Functions + Reaction Metadata", "[reactions][hybrid][pur
 
         REQUIRE(store.value == 2);
         REQUIRE(store.last_operation == "double");
-
-        std::cout << "✓ Reactions successfully wrap pure functions" << std::endl;
     }
 
     SECTION("Dependency metadata is extracted from Reaction declarations")
@@ -189,8 +185,6 @@ TEST_CASE("Hybrid: Pure Functions + Reaction Metadata", "[reactions][hybrid][pur
         // Check dependencies
         REQUIRE(DoubleReaction::depends_on<IncrementReaction>() == true);
         REQUIRE(DoubleReaction::depends_on<ResetReaction>() == false);
-
-        std::cout << "✓ Dependency metadata extracted from Reaction types" << std::endl;
     }
 
     SECTION("Dependency graph built automatically from metadata")
@@ -212,8 +206,6 @@ TEST_CASE("Hybrid: Pure Functions + Reaction Metadata", "[reactions][hybrid][pur
         auto r0_pos = std::find(order.execution_order.begin(), order.execution_order.end(), r0);
         auto r1_pos = std::find(order.execution_order.begin(), order.execution_order.end(), r1);
         REQUIRE(r0_pos < r1_pos);
-
-        std::cout << "✓ Dependency graph automatically enforces execution order" << std::endl;
     }
 }
 
@@ -310,8 +302,6 @@ TEST_CASE("Hybrid: FSM State Functions + Reactions", "[reactions][hybrid][fsm]")
         FSMStateFunctions::ActiveState::onHeartbeat(store);
         REQUIRE(store.value == 2);
         REQUIRE(store.last_operation == "active_heartbeat");
-
-        std::cout << "✓ FSM state functions tested standalone" << std::endl;
     }
 
     SECTION("Reactions wrap FSM state functions")
@@ -337,8 +327,6 @@ TEST_CASE("Hybrid: FSM State Functions + Reactions", "[reactions][hybrid][fsm]")
         activeHB.execute(store, container, hb2);
         REQUIRE(store.value == 2);
         REQUIRE(store.last_operation == "active_heartbeat");
-
-        std::cout << "✓ Reactions successfully wrap FSM state functions" << std::endl;
     }
 
     SECTION("FSM state dependencies expressed in Reaction metadata")
@@ -346,8 +334,6 @@ TEST_CASE("Hybrid: FSM State Functions + Reactions", "[reactions][hybrid][fsm]")
         // ActiveHeartbeatReaction declares dependency on IdleIncrementReaction
         REQUIRE(ActiveHeartbeatReaction::depends_on<IdleIncrementReaction>() == true);
         REQUIRE(ActiveHeartbeatReaction::depends_on<IdleHeartbeatReaction>() == false);
-
-        std::cout << "✓ FSM state dependencies captured in metadata" << std::endl;
     }
 }
 
@@ -379,8 +365,6 @@ TEST_CASE("Hybrid: Developer Workflow", "[reactions][hybrid][workflow]")
 
         REQUIRE(store.value == 21);
         REQUIRE(store.last_operation == "multiply_by_three");
-
-        std::cout << "✓ Step 1: Pure business logic written and tested" << std::endl;
     }
 
     SECTION("Step 2: Developer adds Reaction wrapper (boilerplate)")
@@ -407,8 +391,6 @@ TEST_CASE("Hybrid: Developer Workflow", "[reactions][hybrid][workflow]")
         reaction.execute(store, container, input);
 
         REQUIRE(store.value == 21);
-
-        std::cout << "✓ Step 2: Reaction wrapper added (minimal boilerplate)" << std::endl;
     }
 
     SECTION("Step 3: Dependency graph automatically built")
@@ -432,9 +414,6 @@ TEST_CASE("Hybrid: Developer Workflow", "[reactions][hybrid][workflow]")
         REQUIRE(order.execution_order[0] == r0);
         REQUIRE(order.execution_order[1] == r1);
         REQUIRE(order.execution_order[2] == r2);
-
-        std::cout << "✓ Step 3: Dependency graph built automatically" << std::endl;
-        std::cout << "  Execution order: r0 -> r1 -> r2" << std::endl;
     }
 }
 
@@ -459,8 +438,6 @@ TEST_CASE("Hybrid: Testing Strategy", "[reactions][hybrid][testing]")
 
         PureStateFunctions::resetCounter(store);
         REQUIRE(store.value == 0);
-
-        std::cout << "✓ Unit tests for pure functions (fast, simple)" << std::endl;
     }
 
     SECTION("Integration test reactions (with framework)")
@@ -477,8 +454,6 @@ TEST_CASE("Hybrid: Testing Strategy", "[reactions][hybrid][testing]")
         // Verify system integration
         REQUIRE(order.execution_order[0] == r0);
         REQUIRE(order.execution_order[1] == r1);
-
-        std::cout << "✓ Integration tests verify framework behavior" << std::endl;
     }
 
     SECTION("Dependency tests validate graph structure")
@@ -486,51 +461,5 @@ TEST_CASE("Hybrid: Testing Strategy", "[reactions][hybrid][testing]")
         // Test that dependencies are correctly declared
         REQUIRE(DoubleReaction::depends_on<IncrementReaction>() == true);
         REQUIRE(IncrementReaction::depends_on<DoubleReaction>() == false);
-
-        std::cout << "✓ Dependency tests validate metadata" << std::endl;
-    }
-}
-
-// ============================================================================
-// Summary
-// ============================================================================
-
-TEST_CASE("Hybrid: Summary", "[reactions][hybrid][summary]")
-{
-    services::default_logger();
-
-    SECTION("What the developer primarily writes")
-    {
-        std::cout << "\n=== DEVELOPER WORKFLOW ===" << std::endl;
-        std::cout << "1. Write pure functions (business logic)" << std::endl;
-        std::cout << "   - No inheritance, no templates" << std::endl;
-        std::cout << "   - Easy to test standalone" << std::endl;
-        std::cout << "   - Example: PureStateFunctions::incrementCounter()" << std::endl;
-        std::cout << std::endl;
-        std::cout << "2. Add Reaction wrapper (boilerplate)" << std::endl;
-        std::cout << "   - Declare triggers: TypeList<InputType>" << std::endl;
-        std::cout << "   - Declare dependencies: TypeList<OtherReaction>" << std::endl;
-        std::cout << "   - execute() just calls pure function" << std::endl;
-        std::cout << std::endl;
-        std::cout << "3. Framework handles the rest" << std::endl;
-        std::cout << "   - Builds dependency graph" << std::endl;
-        std::cout << "   - Computes topological order" << std::endl;
-        std::cout << "   - Executes reactions deterministically" << std::endl;
-        std::cout << std::endl;
-
-        REQUIRE(true);  // Always pass - this is documentation
-    }
-
-    SECTION("Benefits of this approach")
-    {
-        std::cout << "=== BENEFITS ===" << std::endl;
-        std::cout << "✓ Core logic is pure functions (easy to test)" << std::endl;
-        std::cout << "✓ Reactions are thin wrappers (minimal boilerplate)" << std::endl;
-        std::cout << "✓ Dependencies are explicit (compile-time metadata)" << std::endl;
-        std::cout << "✓ Execution order is deterministic (topological sort)" << std::endl;
-        std::cout << "✓ Graph analysis is automatic (cycle detection, etc.)" << std::endl;
-        std::cout << std::endl;
-
-        REQUIRE(true);
     }
 }

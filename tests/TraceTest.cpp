@@ -4,7 +4,7 @@
 #include "mscpp/ReactorScheduler.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/ReactionGraph.h"
-#include "mscpp/ReactorWithPorts.h"  // For DECLARE_REACTOR_NAME
+#include "mscpp/MicroServiceReactors.h"  // For DECLARE_REACTOR_NAME
 #include "example-services/Inputs.h"
 
 #include <random>

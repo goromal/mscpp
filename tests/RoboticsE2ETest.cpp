@@ -54,7 +54,7 @@
 #include "mscpp/Topology.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/ReactionGraph.h"
-#include "mscpp/ReactorWithPorts.h"
+#include "mscpp/MicroServiceReactors.h"
 #include "mscpp/ReactorScheduler.h"
 #include "mscpp/StateSet.h"
 #include "mscpp/MicroServiceContainer.h"
@@ -159,11 +159,11 @@ struct IMUHeartbeatReaction : public Reaction<
 
 using ReactionsIMU = ReactionSet<IMUHeartbeatReaction>;
 
-class IMU : public ReactorWithPorts<NameIMU, StoreIMU, PortsIMU,
+class IMU : public MicroServiceReactor<NameIMU, StoreIMU, PortsIMU,
                                     MicroServiceContainer<>, ReactionsIMU>
 {
 public:
-    using Base = ReactorWithPorts<NameIMU, StoreIMU, PortsIMU,
+    using Base = MicroServiceReactor<NameIMU, StoreIMU, PortsIMU,
                                   MicroServiceContainer<>, ReactionsIMU>;
     using Base::Base;
 
@@ -326,11 +326,11 @@ using ReactionsKalman = ReactionSet<ReadSensorReaction,
                                     FilterPoseReaction,
                                     PublishEstimateReaction>;
 
-class KalmanFilter : public ReactorWithPorts<NameKalmanFilter, StoreKalman, PortsKalman,
+class KalmanFilter : public MicroServiceReactor<NameKalmanFilter, StoreKalman, PortsKalman,
                                              KalmanContainer, ReactionsKalman>
 {
 public:
-    using Base = ReactorWithPorts<NameKalmanFilter, StoreKalman, PortsKalman,
+    using Base = MicroServiceReactor<NameKalmanFilter, StoreKalman, PortsKalman,
                                   KalmanContainer, ReactionsKalman>;
     using Base::Base;
 
@@ -466,12 +466,12 @@ using StatesetPlanner = StateSet<IdleStatePlanner,
                                  PlanningStatePlanner,
                                  ExecutingStatePlanner>;
 
-class MotionPlanner : public ReactorWithPortsAndFSM<NameMotionPlanner, StorePlanner,
+class MotionPlanner : public MicroServiceFSMReactor<NameMotionPlanner, StorePlanner,
                                                      PortsPlanner, MicroServiceContainer<>,
                                                      StatesetPlanner>
 {
 public:
-    using Base = ReactorWithPortsAndFSM<NameMotionPlanner, StorePlanner, PortsPlanner,
+    using Base = MicroServiceFSMReactor<NameMotionPlanner, StorePlanner, PortsPlanner,
                                         MicroServiceContainer<>, StatesetPlanner>;
     using Base::Base;
 
@@ -1121,7 +1121,7 @@ TEST_CASE("Robotics E2E: Scheduler event delivery", "[robotics][scheduler]")
 // Everything above manually ticks each service — useful for isolating
 // assertions between steps, but not how you'd actually deploy this.
 //
-// ReactorWithPorts now inherits from IReactor directly.  The base class
+// MicroServiceReactor now inherits from IReactor directly.  The base class
 // handles self-rescheduling and port clearing whenever a scheduler is
 // attached via setScheduler().  The production deployment is therefore:
 //   1. Construct services (shared_ptr so the scheduler can hold them)

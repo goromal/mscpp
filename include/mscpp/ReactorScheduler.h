@@ -20,7 +20,7 @@ namespace services
 
 // Global reactor ID counter shared by all reactor base classes.
 // Defined here (rather than in any single reactor header) so that
-// ReactorWithPorts, ReactorWithReactions, etc. can all participate
+// MicroServiceReactor, ReactorWithReactions, etc. can all participate
 // in the same ID space without circular includes.
 inline std::atomic<size_t>& getGlobalReactorIdCounter()
 {

@@ -8,7 +8,7 @@
 #include <memory>
 
 /**
- * ReactorWithPorts - Template base class for reactors using port-based I/O
+ * MicroServiceReactor - Template base class for reactors using port-based I/O
  *
  * Inherits from IReactor so that port-based services can be registered
  * directly with the ReactorScheduler — no external adapter needed.
@@ -31,10 +31,10 @@
  * - ReactionSet: Set of reactions (optional, for reaction-based model)
  *
  * Usage:
- *   class MyReactor : public ReactorWithPorts<NameMyReactor, StoreMyReactor,
+ *   class MyReactor : public MicroServiceReactor<NameMyReactor, StoreMyReactor,
  *                                              PortsMyReactor, ContainerType> {
  *   public:
- *       using Base = ReactorWithPorts<...>;
+ *       using Base = MicroServiceReactor<...>;
  *       using Base::Base;
  *
  *       // Implement the heartbeat logic (reactions or direct port manipulation)
@@ -53,7 +53,7 @@ template<const char* Name,
          typename PortsType,
          typename ContainerType,
          typename ReactionSetType = void>
-class ReactorWithPorts : public IReactor
+class MicroServiceReactor : public IReactor
 {
 public:
     using Store = StoreType;
@@ -63,7 +63,7 @@ public:
 
     static constexpr const char* name() { return Name; }
 
-    ReactorWithPorts()
+    MicroServiceReactor()
         : mStore{}
         , mPorts{}
         , mContainer(__handle_later{})
@@ -71,7 +71,7 @@ public:
         mReactorId = getGlobalReactorIdCounter().fetch_add(1);
     }
 
-    ReactorWithPorts(const Container& container)
+    MicroServiceReactor(const Container& container)
         : mStore{}
         , mPorts{}
         , mContainer(container)
@@ -79,7 +79,7 @@ public:
         mReactorId = getGlobalReactorIdCounter().fetch_add(1);
     }
 
-    virtual ~ReactorWithPorts() = default;
+    virtual ~MicroServiceReactor() = default;
 
     // ── IReactor interface ───────────────────────────────────────────
 
@@ -189,20 +189,20 @@ private:
 };
 
 /**
- * ReactorWithPortsAndFSM - Adds FSM support to ReactorWithPorts
+ * MicroServiceFSMReactor - Adds FSM support to MicroServiceReactor
  *
- * Extends ReactorWithPorts with FSM state machine functionality.
+ * Extends MicroServiceReactor with FSM state machine functionality.
  * Combines port-based I/O with traditional FSM state transitions.
  *
  * Template Parameters:
- * - Name, Store, Ports, Container: Same as ReactorWithPorts
+ * - Name, Store, Ports, Container: Same as MicroServiceReactor
  * - StateSet: Set of FSM states
  *
  * Usage:
- *   class MyReactor : public ReactorWithPortsAndFSM<Name, Store, Ports,
+ *   class MyReactor : public MicroServiceFSMReactor<Name, Store, Ports,
  *                                                    Container, States> {
  *   public:
- *       using Base = ReactorWithPortsAndFSM<...>;
+ *       using Base = MicroServiceFSMReactor<...>;
  *       using Base::Base;
  *
  *       // FSM states can access ports via getPorts()
@@ -213,11 +213,11 @@ template<const char* Name,
          typename PortsType,
          typename ContainerType,
          typename StateSetType>
-class ReactorWithPortsAndFSM : public ReactorWithPorts<Name, StoreType, PortsType,
+class MicroServiceFSMReactor : public MicroServiceReactor<Name, StoreType, PortsType,
                                                         ContainerType, void>
 {
 public:
-    using Base = ReactorWithPorts<Name, StoreType, PortsType, ContainerType, void>;
+    using Base = MicroServiceReactor<Name, StoreType, PortsType, ContainerType, void>;
     using States = StateSetType;
     using Store = StoreType;
     using Ports = PortsType;
@@ -261,9 +261,9 @@ protected:
  *   struct StoreMyReactor { ... };
  *   struct PortsMyReactor { ... };
  *
- *   class MyReactor : public ReactorWithPorts<NameMyReactor, StoreMyReactor,
+ *   class MyReactor : public MicroServiceReactor<NameMyReactor, StoreMyReactor,
  *                                              PortsMyReactor, ContainerType> {
- *       using Base = ReactorWithPorts<...>;
+ *       using Base = MicroServiceReactor<...>;
  *       using Base::Base;
  *   };
  */

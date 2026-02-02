@@ -9,7 +9,7 @@
 #include <memory>
 
 #include "mscpp/MicroServiceContainer.h"
-#include "mscpp/ReactorWithPorts.h"
+#include "mscpp/MicroServiceReactors.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/Ports.h"
 #include "mscpp/StateSet.h"
@@ -101,12 +101,12 @@ struct AccumulateReaction : public Reaction<
 
 using ReactionsAccumulator = ReactionSet<AccumulateReaction>;
 
-class Accumulator : public ReactorWithPorts<NameAccumulator, StoreAccumulator,
+class Accumulator : public MicroServiceReactor<NameAccumulator, StoreAccumulator,
                                             PortsAccumulator, AppContainer,
                                             ReactionsAccumulator>
 {
 public:
-    using Base = ReactorWithPorts<NameAccumulator, StoreAccumulator,
+    using Base = MicroServiceReactor<NameAccumulator, StoreAccumulator,
                                   PortsAccumulator, AppContainer,
                                   ReactionsAccumulator>;
     using Base::Base;
@@ -195,12 +195,12 @@ struct GatedRunningState : public State<GatedRunningState, 1>
 
 using StatesGated = StateSet<GatedIdleState, GatedRunningState>;
 
-class GatedCounter : public ReactorWithPortsAndFSM<NameGatedCounter, StoreGated,
+class GatedCounter : public MicroServiceFSMReactor<NameGatedCounter, StoreGated,
                                                      PortsGated, AppContainer,
                                                      StatesGated>
 {
 public:
-    using Base = ReactorWithPortsAndFSM<NameGatedCounter, StoreGated,
+    using Base = MicroServiceFSMReactor<NameGatedCounter, StoreGated,
                                         PortsGated, AppContainer,
                                         StatesGated>;
     using Base::Base;

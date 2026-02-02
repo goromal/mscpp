@@ -42,24 +42,6 @@ TEST_CASE("Dependency Graph Construction", "[reactions][graph]")
         auto r0_pos = std::find(topOrder.execution_order.begin(), topOrder.execution_order.end(), 0);
         auto r1_pos = std::find(topOrder.execution_order.begin(), topOrder.execution_order.end(), 1);
         REQUIRE(r0_pos < r1_pos);
-
-        std::cout << "Execution order: ";
-        for (size_t idx : topOrder.execution_order)
-        {
-            std::cout << idx << " ";
-        }
-        std::cout << std::endl;
-
-        std::cout << "Number of levels: " << topOrder.levels.size() << std::endl;
-        for (size_t i = 0; i < topOrder.levels.size(); i++)
-        {
-            std::cout << "Level " << i << ": ";
-            for (size_t idx : topOrder.levels[i])
-            {
-                std::cout << idx << " ";
-            }
-            std::cout << std::endl;
-        }
     }
 
     SECTION("Detect cycles in dependency graph")
@@ -112,17 +94,6 @@ TEST_CASE("Dependency Graph Construction", "[reactions][graph]")
 
         // Level 2 should have r3
         REQUIRE(topOrder.levels[2].size() == 1);
-
-        std::cout << "Complex graph levels:" << std::endl;
-        for (size_t i = 0; i < topOrder.levels.size(); i++)
-        {
-            std::cout << "  Level " << i << ": ";
-            for (size_t idx : topOrder.levels[i])
-            {
-                std::cout << graph.getNode(idx).reaction_id << " ";
-            }
-            std::cout << std::endl;
-        }
     }
 }
 
@@ -157,13 +128,6 @@ TEST_CASE("Reaction Executor", "[reactions][executor]")
         REQUIRE(executionOrder[0] == 0);
         REQUIRE(executionOrder[1] == 1);
         REQUIRE(executionOrder[2] == 2);
-
-        std::cout << "Execution order: ";
-        for (int val : executionOrder)
-        {
-            std::cout << val << " ";
-        }
-        std::cout << std::endl;
     }
 
     SECTION("Execute reactions level-by-level")
@@ -202,13 +166,6 @@ TEST_CASE("Reaction Executor", "[reactions][executor]")
 
         REQUIRE(pos_0 < pos_2);
         REQUIRE(pos_1 < pos_3);
-
-        std::cout << "Level-based execution order: ";
-        for (int val : executionOrder)
-        {
-            std::cout << val << " ";
-        }
-        std::cout << std::endl;
     }
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mscpp/ReactorWithPorts.h"
+#include "mscpp/MicroServiceReactors.h"
 #include "mscpp/StateSet.h"
 #include "Inputs.h"
 
@@ -210,17 +210,17 @@ using StatesFSM = StateSet<InitStateFSM, RunningStateFSM, StoppedStateFSM>;
 /**
  * ServiceF - FSM-based reactor with ports
  *
- * Uses ReactorWithPortsAndFSM template to eliminate boilerplate.
+ * Uses MicroServiceFSMReactor template to eliminate boilerplate.
  * State step() functions have signature:
  *   size_t step(Store& store, Ports& ports, const Container& c, InputType& input)
  *
  * This allows states to access both store and ports.
  */
-class ServiceF : public ReactorWithPortsAndFSM<NameServiceF, StoreFSM, PortsFSM,
+class ServiceF : public MicroServiceFSMReactor<NameServiceF, StoreFSM, PortsFSM,
                                                 MicroServiceContainer<>, StatesFSM>
 {
 public:
-    using Base = ReactorWithPortsAndFSM<NameServiceF, StoreFSM, PortsFSM,
+    using Base = MicroServiceFSMReactor<NameServiceF, StoreFSM, PortsFSM,
                                         MicroServiceContainer<>, StatesFSM>;
     using Base::Base;  // Inherit constructors
 
@@ -343,14 +343,14 @@ using ReactionsG = ReactionSet<AddReactionG, MultiplyReactionG>;
 /**
  * ServiceG - Reaction-based reactor with ports
  *
- * Uses ReactorWithPorts template with ReactionSet.
+ * Uses MicroServiceReactor template with ReactionSet.
  * Demonstrates pure functions + reactions + ports.
  */
-class ServiceG : public ReactorWithPorts<NameServiceG, StoreG, PortsG,
+class ServiceG : public MicroServiceReactor<NameServiceG, StoreG, PortsG,
                                          MicroServiceContainer<>, ReactionsG>
 {
 public:
-    using Base = ReactorWithPorts<NameServiceG, StoreG, PortsG,
+    using Base = MicroServiceReactor<NameServiceG, StoreG, PortsG,
                                   MicroServiceContainer<>, ReactionsG>;
     using Base::Base;
 

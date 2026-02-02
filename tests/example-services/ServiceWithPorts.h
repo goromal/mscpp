@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mscpp/ReactorWithPorts.h"
+#include "mscpp/MicroServiceReactors.h"
 #include "mscpp/Reaction.h"
 #include "mscpp/MicroServiceContainer.h"
 #include "Inputs.h"
@@ -71,11 +71,11 @@ using ReactionsC = ReactionSet<HeartbeatReactionC>;
 /**
  * ServiceC with port-based output (using template base class)
  */
-class ServiceC : public ReactorWithPorts<NameServiceC, StoreC, PortsC,
+class ServiceC : public MicroServiceReactor<NameServiceC, StoreC, PortsC,
                                          MicroServiceContainer<>, ReactionsC>
 {
 public:
-    using Base = ReactorWithPorts<NameServiceC, StoreC, PortsC,
+    using Base = MicroServiceReactor<NameServiceC, StoreC, PortsC,
                                   MicroServiceContainer<>, ReactionsC>;
     using Base::Base;  // Inherit constructors
 
@@ -144,11 +144,11 @@ using ReactionsD = ReactionSet<HeartbeatReactionD>;
 /**
  * ServiceD with port-based input (using template base class)
  */
-class ServiceD : public ReactorWithPorts<NameServiceD, StoreD, PortsD,
+class ServiceD : public MicroServiceReactor<NameServiceD, StoreD, PortsD,
                                          MicroServiceContainer<>, ReactionsD>
 {
 public:
-    using Base = ReactorWithPorts<NameServiceD, StoreD, PortsD,
+    using Base = MicroServiceReactor<NameServiceD, StoreD, PortsD,
                                   MicroServiceContainer<>, ReactionsD>;
     using Base::Base;
 
@@ -221,11 +221,11 @@ using ReactionsE = ReactionSet<TransformReactionE>;
 /**
  * ServiceE that transforms values (using template base class)
  */
-class ServiceE : public ReactorWithPorts<NameServiceE, StoreE, PortsE,
+class ServiceE : public MicroServiceReactor<NameServiceE, StoreE, PortsE,
                                          MicroServiceContainer<>, ReactionsE>
 {
 public:
-    using Base = ReactorWithPorts<NameServiceE, StoreE, PortsE,
+    using Base = MicroServiceReactor<NameServiceE, StoreE, PortsE,
                                   MicroServiceContainer<>, ReactionsE>;
     using Base::Base;
 
