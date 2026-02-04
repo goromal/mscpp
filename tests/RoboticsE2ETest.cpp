@@ -400,7 +400,7 @@ struct IdleStatePlanner : public State<IdleStatePlanner, 0>
 {
     size_t step(StorePlanner& store, PortsPlanner& ports,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& /*input*/) // ^^^^ only allowable input is the heartbeat?
+                HeartbeatInput& /*input*/) // ^^^^ only allowable input is the heartbeat? GETTING_STARTED.md might be misleading
     {
         if (ports.filtered_pose.is_present()) // ^^^^ wait, so ports can only be processed at the speed of heartbeats?
         {

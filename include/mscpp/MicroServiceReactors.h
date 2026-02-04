@@ -166,6 +166,8 @@ public:
      * @param tag Current logical tag
      * @return false (port-based reactors don't use input queues) // ^^^^ as in inherently can't??
      */ // ^^^^ doesn't that limit processing speed, though?
+     // ^^^^ I know we have the container for quick store reads, but even the store can't be updated that rapidly...
+     // ^^^^ This is mainly a problem for A -> call B -> process in A -type operations. Seems like unnecessary latency.
     bool processNextInput(const LogicalTag&) override { return false; }
 
     // ── Scheduler wiring ─────────────────────────────────────────────
