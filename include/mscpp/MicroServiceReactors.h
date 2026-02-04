@@ -63,6 +63,11 @@ public:
 
     static constexpr const char* name() { return Name; }
 
+    /**
+     * Default constructor.
+     * Initializes store, ports, and container with defaults.
+     * Automatically assigns a unique reactor ID.
+     */
     MicroServiceReactor()
         : mStore{}
         , mPorts{}
@@ -71,6 +76,11 @@ public:
         mReactorId = getGlobalReactorIdCounter().fetch_add(1);
     }
 
+    /**
+     * Constructor with dependency injection container.
+     *
+     * @param container Dependency injection container for services/resources
+     */
     MicroServiceReactor(const Container& container)
         : mStore{}
         , mPorts{}
@@ -79,20 +89,39 @@ public:
         mReactorId = getGlobalReactorIdCounter().fetch_add(1);
     }
 
+    /**
+     * Virtual destructor for proper cleanup of derived classes.
+     */
     virtual ~MicroServiceReactor() = default;
 
     // ── IReactor interface ───────────────────────────────────────────
 
+    /**
+     * Get the unique reactor ID.
+     *
+     * @return Globally unique reactor identifier
+     */
     size_t getId() const override
     {
         return mReactorId;
     }
 
+    /**
+     * Get the reactor name.
+     *
+     * @return Name string from template parameter
+     */
     std::string getName() const override
     {
         return std::string(Name);
     }
 
+    /**
+     * Initialize reactor state before scheduling begins.
+     *
+     * Called once by the scheduler before the first heartbeat.
+     * Override to set initial state or perform setup.
+     */
     void initialize() override
     {
         // Default: nothing to do.  Subclasses may override to seed state.
@@ -112,7 +141,10 @@ public:
 
         if (mScheduler)
         {
+            // Clear input ports using custom override
             clearPorts();
+            // Also call generic helper for ENABLE_AUTO_CLEAR_PORTS (function name in global namespace)
+            services::clearInputPorts(mPorts);
 
             LogicalTag next = tag.advance_time(heartbeatDuration());
             mScheduler->scheduleEvent(next, mReactorId, [this, next]() {
@@ -121,7 +153,19 @@ public:
         }
     }
 
-    bool hasPendingInputs() const override { return false; }
+    /**
+     * Check if reactor has pending inputs (queue-based model).
+     *
+     * @return false (port-based reactors don't use input queues)
+     */
+    bool hasPendingInputs() const override { return false; } // ^^^^ why is this here if not used anywhere anymore?
+
+    /**
+     * Process next queued input (queue-based model).
+     *
+     * @param tag Current logical tag
+     * @return false (port-based reactors don't use input queues) // ^^^^ as in inherently can't??
+     */ // ^^^^ doesn't that limit processing speed, though?
     bool processNextInput(const LogicalTag&) override { return false; }
 
     // ── Scheduler wiring ─────────────────────────────────────────────
@@ -129,6 +173,8 @@ public:
     /**
      * Attach a scheduler.  Must be called before the scheduler's run().
      * When set, executeHeartbeat() will reschedule and clear ports.
+     *
+     * @param scheduler Pointer to the ReactorScheduler managing this reactor
      */
     void setScheduler(ReactorScheduler* scheduler)
     {
@@ -137,12 +183,39 @@ public:
 
     // ── Accessors ────────────────────────────────────────────────────
 
-    Store& getStore() { return mStore; }
+    /**
+     * Get mutable reference to reactor state.
+     *
+     * @return Reference to state store
+     */
+    Store& getStore() { return mStore; } // ^^^^ hm bad idea?
+
+    /**
+     * Get const reference to reactor state.
+     *
+     * @return Const reference to state store
+     */
     const Store& getStore() const { return mStore; }
 
+    /**
+     * Get mutable reference to reactor ports.
+     *
+     * @return Reference to port collection
+     */
     Ports& getPorts() { return mPorts; }
+
+    /**
+     * Get const reference to reactor ports.
+     *
+     * @return Const reference to port collection
+     */
     const Ports& getPorts() const { return mPorts; }
 
+    /**
+     * Get reference to dependency injection container.
+     *
+     * @return Const reference to container
+     */
     const Container& getContainer() const { return mContainer; }
 
     /**
@@ -155,28 +228,37 @@ public:
     }
 
 protected:
-    Store mStore;
-    Ports mPorts;
-    Container mContainer;
+    Store mStore;        ///< Reactor's mutable state
+    Ports mPorts;        ///< Input and output port collection
+    Container mContainer; ///< Dependency injection container
 
     // ── Pure virtuals for subclasses ─────────────────────────────────
 
     /**
      * Subclass heartbeat logic.  This is the only method you must override.
      * Write your reactions or FSM dispatch here.
+     *
+     * @param tag Current logical tag for this heartbeat
      */
     virtual void doHeartbeat(const LogicalTag& tag) = 0;
 
     /**
      * Reset all input ports so presence semantics are fresh for the next tag.
-     * Must clear every InputPort member in your Ports struct.
-     * Default implementation does nothing — override this.
+     *
+     * Default implementation does nothing. You can:
+     * 1. Override this method to manually clear ports, OR
+     * 2. Use ENABLE_AUTO_CLEAR_PORTS macro after defining your Ports struct
+     *
+     * The base class automatically calls both clearPorts() and clearInputPorts()
+     * so either approach works.
      */
     virtual void clearPorts() {}
 
     /**
      * Heartbeat period in logical time.  Override to change the rate.
      * Default: 10 ms.
+     *
+     * @return Time interval between heartbeats
      */
     virtual LogicalTime heartbeatDuration() const
     {
@@ -184,8 +266,8 @@ protected:
     }
 
 private:
-    size_t            mReactorId{0};
-    ReactorScheduler* mScheduler{nullptr};
+    size_t            mReactorId{0};       ///< Unique reactor identifier
+    ReactorScheduler* mScheduler{nullptr}; ///< Scheduler managing this reactor
 };
 
 /**
@@ -223,13 +305,19 @@ public:
     using Ports = PortsType;
     using Container = ContainerType;
 
-    using Base::Base;  // Inherit constructors
+    /**
+     * Inherit constructors from base class.
+     */
+    using Base::Base;
 
     /**
      * Execute an input through the FSM
      *
      * Dispatches to the current state's step() function for this input type.
      * State step functions can access ports via this->getPorts().
+     *
+     * @tparam InputType Type of input to process
+     * @param input Input to process through current state
      */
     template<typename InputType>
     void executeInput(InputType& input)
@@ -242,6 +330,8 @@ public:
 
     /**
      * Get current FSM state index
+     *
+     * @return Index of the active state in the state set
      */
     size_t getCurrentState() const
     {
@@ -249,25 +339,137 @@ public:
     }
 
 protected:
-    StateSetType mStateMachine;
+    StateSetType mStateMachine; ///< Finite state machine instance
 };
 
 /**
- * Helper macro for declaring a reactor with ports
+ * Helper macro for declaring a reactor name
  *
  * Usage:
  *   DECLARE_REACTOR_NAME(MyReactor);
- *
- *   struct StoreMyReactor { ... };
- *   struct PortsMyReactor { ... };
- *
- *   class MyReactor : public MicroServiceReactor<NameMyReactor, StoreMyReactor,
- *                                              PortsMyReactor, ContainerType> {
- *       using Base = MicroServiceReactor<...>;
- *       using Base::Base;
- *   };
+ *   // Creates: NameMyReactor
  */
 #define DECLARE_REACTOR_NAME(name) \
     inline constexpr char Name##name[] = #name
+
+/**
+ * Comprehensive macro for declaring a reactor with minimal boilerplate
+ *
+ * Usage:
+ *   DEFINE_REACTOR(MyReactor, MyStore, MyPorts, MyContainer)
+ *   {
+ *       void doHeartbeat(const LogicalTag& tag) override {
+ *           // Your heartbeat logic
+ *       }
+ *
+ *       void clearPorts() override {
+ *           mPorts.input_port.clear();
+ *       }
+ *   };
+ *
+ * This macro automatically:
+ * - Declares the reactor name constant
+ * - Creates the reactor class inheriting from MicroServiceReactor
+ * - Sets up the Base typedef
+ * - Inherits constructors
+ * - Provides access to mStore, mPorts, mContainer
+ */
+#define DEFINE_REACTOR(ReactorName, StoreType, PortsType, ContainerType)         \
+    DECLARE_REACTOR_NAME(ReactorName);                                            \
+    class ReactorName : public services::MicroServiceReactor<                     \
+        Name##ReactorName, StoreType, PortsType, ContainerType>                   \
+    {                                                                              \
+    public:                                                                        \
+        using Base = services::MicroServiceReactor<Name##ReactorName,             \
+            StoreType, PortsType, ContainerType>;                                 \
+        using Base::Base;                                                          \
+        using Store = StoreType;                                                   \
+        using Ports = PortsType;                                                   \
+        using Container = ContainerType;                                           \
+    private:
+
+/**
+ * Helper macro to execute a reaction with automatic instantiation
+ *
+ * Usage in doHeartbeat():
+ *   EXECUTE_REACTION(HeartbeatReaction, HeartbeatInput);
+ *
+ * Expands to:
+ *   {
+ *       HeartbeatInput input;
+ *       HeartbeatReaction reaction;
+ *       reaction.execute(mStore, mPorts, mContainer, input);
+ *   }
+ */
+#define EXECUTE_REACTION(ReactionType, InputType)                                 \
+    do {                                                                           \
+        InputType input;                                                           \
+        ReactionType reaction;                                                     \
+        reaction.execute(this->mStore, this->mPorts, this->mContainer, input);   \
+    } while(0)
+
+/**
+ * Simplified reaction declaration for common case (no effects/dependencies)
+ *
+ * Usage:
+ *   SIMPLE_REACTION(MyReactor, 0, HeartbeatInput)
+ *   {
+ *       void execute(MyStore& store, MyPorts& ports,
+ *                    const Container& c, HeartbeatInput& input) {
+ *           // reaction body
+ *       }
+ *   };
+ */
+#define SIMPLE_REACTION(ReactorType, Index, TriggerType)                          \
+    struct ReactorType##Reaction##Index : public services::Reaction<              \
+        ReactorType, Index, services::TypeList<TriggerType>,                      \
+        services::TypeList<>, services::TypeList<>>
+
+/**
+ * Comprehensive macro for declaring an FSM reactor with minimal boilerplate
+ *
+ * Usage:
+ *   DEFINE_FSM_REACTOR(MyFSMReactor, MyStore, MyPorts, MyContainer, MyStates)
+ *   {
+ *       void doHeartbeat(const LogicalTag& tag) override {
+ *           // Your heartbeat logic - can dispatch inputs to FSM
+ *       }
+ *   };
+ *
+ * This macro automatically:
+ * - Declares the reactor name constant
+ * - Creates the FSM reactor class inheriting from MicroServiceFSMReactor
+ * - Sets up the Base typedef
+ * - Inherits constructors
+ * - Provides access to mStore, mPorts, mContainer, mStateMachine
+ */
+#define DEFINE_FSM_REACTOR(ReactorName, StoreType, PortsType, ContainerType, StateSetType) \
+    DECLARE_REACTOR_NAME(ReactorName);                                                      \
+    class ReactorName : public services::MicroServiceFSMReactor<                            \
+        Name##ReactorName, StoreType, PortsType, ContainerType, StateSetType>               \
+    {                                                                                        \
+    public:                                                                                  \
+        using Base = services::MicroServiceFSMReactor<Name##ReactorName,                    \
+            StoreType, PortsType, ContainerType, StateSetType>;                             \
+        using Base::Base;                                                                    \
+        using Store = StoreType;                                                             \
+        using Ports = PortsType;                                                             \
+        using Container = ContainerType;                                                     \
+        using States = StateSetType;                                                         \
+    private:
+
+/**
+ * Helper macro to execute an input through the FSM
+ *
+ * Usage in doHeartbeat():
+ *   if (ports.command_in.is_present()) {
+ *       EXECUTE_FSM_INPUT(ports.command_in.get());
+ *   }
+ *
+ * Expands to:
+ *   this->executeInput(input);
+ */
+#define EXECUTE_FSM_INPUT(input) \
+    this->executeInput(input)
 
 } // namespace services

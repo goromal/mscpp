@@ -400,9 +400,9 @@ struct IdleStatePlanner : public State<IdleStatePlanner, 0>
 {
     size_t step(StorePlanner& store, PortsPlanner& ports,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& /*input*/)
+                HeartbeatInput& /*input*/) // ^^^^ only allowable input is the heartbeat?
     {
-        if (ports.filtered_pose.is_present())
+        if (ports.filtered_pose.is_present()) // ^^^^ wait, so ports can only be processed at the speed of heartbeats?
         {
             store.current_pose = ports.filtered_pose.get();
             store.has_pose     = true;
@@ -477,7 +477,7 @@ public:
 
     void doHeartbeat(const LogicalTag& /*tag*/) override
     {
-        HeartbeatInput input;
+        HeartbeatInput input; // ^^^^ why does this have to be defined here? Shouldn't this just be in the base class?
         executeInput(input);
     }
 

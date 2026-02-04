@@ -47,6 +47,10 @@ namespace services
 // Forward declarations
 class ReactorScheduler;
 
+// Forward declare OutputPort for InputPort::map_to method
+template<typename T>
+class OutputPort;
+
 /**
  * InputPort - Holds a value present at the current logical tag
  *
@@ -115,6 +119,70 @@ public:
     void clear()
     {
         mValue.reset();
+    }
+
+    /**
+     * Execute callback if port has a value (presence-conditional execution)
+     *
+     * Example:
+     *   ports.counter_in.if_present([&](int value) {
+     *       std::cout << "Received: " << value << "\n";
+     *   });
+     */
+    template<typename F>
+    void if_present(F&& callback) const
+    {
+        if (mValue.has_value())
+        {
+            callback(mValue.value());
+        }
+    }
+
+    /**
+     * Transform the value if present, returning std::optional<U>
+     *
+     * Example:
+     *   auto doubled = ports.counter_in.transform([](int x) { return x * 2; });
+     *   if (doubled) {
+     *       ports.counter_out.set(*doubled);
+     *   }
+     */
+    template<typename F>
+    auto transform(F&& func) const -> std::optional<std::invoke_result_t<F, const T&>>
+    {
+        if (mValue.has_value())
+        {
+            return func(mValue.value());
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * Get optional reference for std::optional-like usage
+     *
+     * Example:
+     *   if (auto value = ports.counter_in.try_get()) {
+     *       // use *value
+     *   }
+     */
+    const std::optional<T>& try_get() const
+    {
+        return mValue;
+    }
+
+    /**
+     * Map the value to output port if present
+     *
+     * Example:
+     *   ports.counter_in.map_to(ports.counter_out, [](int x) { return x * 2; });
+     */
+    template<typename U, typename F>
+    void map_to(OutputPort<U>& output, F&& func) const
+    {
+        if (mValue.has_value())
+        {
+            output.set(func(mValue.value()));
+        }
     }
 
 private:
@@ -310,14 +378,65 @@ template<typename T>
 struct IsOutputPort<OutputPort<T>> : std::true_type {};
 
 /**
- * Clear all input ports in a port set
+ * Clear all input ports in a port set using template metaprogramming
  * Called by scheduler at end of each tag
+ *
+ * This function uses compile-time reflection to automatically clear
+ * all InputPort<T> members in the ports structure.
+ */
+namespace detail
+{
+    // Helper to check if a member is an InputPort and clear it
+    template<typename T>
+    void clearIfInputPort(T& member)
+    {
+        if constexpr (IsInputPort<std::remove_reference_t<T>>::value)
+        {
+            member.clear();
+        }
+        // OutputPorts and other types are ignored
+    }
+
+    // Fold expression to clear all members
+    template<typename PortSetType, typename... Members>
+    void clearAllInputPortsImpl(PortSetType& ports, Members PortSetType::*... members)
+    {
+        (clearIfInputPort(ports.*members), ...);
+    }
+}
+
+/**
+ * Macro to define automatic port clearing for a Ports struct.
+ *
+ * Usage:
+ *   struct MyPorts {
+ *       InputPort<int> counter_in;
+ *       OutputPort<int> counter_out;
+ *       InputPort<std::string> msg_in;
+ *   };
+ *   ENABLE_AUTO_CLEAR_PORTS(MyPorts, counter_in, msg_in)
+ *
+ * This generates a clearAllInputPorts() specialization that automatically
+ * clears the specified input ports without manual implementation.
+ */
+#define ENABLE_AUTO_CLEAR_PORTS(PortsType, ...)                          \
+    namespace services {                                                  \
+    template<>                                                            \
+    inline void clearInputPorts<PortsType>(PortsType& ports)            \
+    {                                                                     \
+        detail::clearAllInputPortsImpl(ports, &PortsType::__VA_ARGS__); \
+    }                                                                     \
+    }
+
+/**
+ * Generic fallback that does nothing (for backwards compatibility)
+ * Override this for your specific port types using ENABLE_AUTO_CLEAR_PORTS
  */
 template<typename PortSetType>
-void clearInputPorts(PortSetType& ports)
+void clearInputPorts([[maybe_unused]] PortSetType& ports)
 {
-    // This will be specialized for specific port structures
-    // For now, requires manual implementation
+    // Default: no-op (backwards compatible)
+    // Use ENABLE_AUTO_CLEAR_PORTS macro to enable automatic clearing
 }
 
 } // namespace services

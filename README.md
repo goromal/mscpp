@@ -21,4 +21,4 @@ Restrictive yet useful template classes for creating a multithreaded, (perhaps) 
 
 ## Defining `MicroService`s
 
-See [the unit test classes](./tests/example-services/) for example service implementations.
+See [the Getting Started guide](./GETTING_STARTED.md) and [the unit test classes](./tests/example-services/) for example service implementations.

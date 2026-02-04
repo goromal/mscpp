@@ -46,17 +46,21 @@ inline std::atomic<size_t>& getGlobalReactorIdCounter()
  * A tagged event represents a scheduled reaction in a reactor.
  *
  * Events are ordered by their logical tag (time, microstep).
- * Multiple events at the same tag are processed in the order they
- * were enqueued (FIFO within tag).
+ * Multiple events at the same tag are processed in deterministic order
+ * by reactor_id (not FIFO - see ordering implementation below).
  */
 struct TaggedEvent
 {
     LogicalTag tag;                            // When this event should execute
     size_t reactor_id;                         // Which reactor owns this event
     std::function<void()> reaction;            // The reaction to execute
-    std::string debug_info;                    // For logging/debugging
+#ifdef ENABLE_EVENT_DEBUG_INFO
+    std::string debug_info;                    // For logging/debugging (optional)
+#endif
 
     // Ordering: events compared by tag, then by reactor_id for determinism
+    // Note: Ordering by reactor_id provides deterministic execution but NOT FIFO.
+    // Events are processed in reactor ID order, not enqueue order within a tag.
     bool operator>(const TaggedEvent& other) const
     {
         if (tag != other.tag)
@@ -142,19 +146,26 @@ public:
 
     /**
      * Schedule an event to execute at the given tag.
+     * Uses move semantics to avoid unnecessary allocations.
      */
     void scheduleEvent(const LogicalTag& tag, size_t reactor_id,
                       std::function<void()> reaction,
-                      const std::string& debug_info = "")
+                      [[maybe_unused]] const std::string& debug_info = "")
     {
         std::scoped_lock lock(mMutex);
 
-        TaggedEvent event{tag, reactor_id, std::move(reaction), debug_info};
-        mEventQueue.push(event);
+        TaggedEvent event;
+        event.tag = tag;
+        event.reactor_id = reactor_id;
+        event.reaction = std::move(reaction);
+#ifdef ENABLE_EVENT_DEBUG_INFO
+        event.debug_info = debug_info;
+#endif
+        mEventQueue.push(std::move(event));
 
 #if LOG_LOGICAL_TIME
-        LOG_TRACE("ReactorScheduler: Scheduled event at tag {} for reactor {} ({})",
-                  tag, reactor_id, debug_info);
+        LOG_TRACE("ReactorScheduler: Scheduled event at tag {} for reactor {}",
+                  tag, reactor_id);
 #endif
     }
 
@@ -211,10 +222,12 @@ public:
 
     /**
      * Get current logical tag.
+     * Thread-safe: Returns a consistent snapshot of the current tag.
      */
     LogicalTag getCurrentTag() const
     {
-        return LogicalTag{LogicalTime(mLogicalTimeNanos.load()), mLogicalMicrostep.load()};
+        std::scoped_lock lock(mMutex);
+        return mCurrentTag;
     }
 
     /**
@@ -314,10 +327,11 @@ private:
                 // Peek at next event's tag
                 LogicalTag nextTag = mEventQueue.top().tag;
 
-                // Dequeue all events at this tag
+                // Dequeue all events at this tag using move semantics
+                eventsAtCurrentTag.reserve(mEventQueue.size());  // Pre-allocate
                 while (!mEventQueue.empty() && mEventQueue.top().tag == nextTag)
                 {
-                    eventsAtCurrentTag.push_back(mEventQueue.top());
+                    eventsAtCurrentTag.push_back(std::move(const_cast<TaggedEvent&>(mEventQueue.top())));
                     mEventQueue.pop();
                 }
 
@@ -359,8 +373,8 @@ private:
             }
 
 #if LOG_LOGICAL_TIME
-            LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}: {}",
-                     event.reactor_id, event.tag, event.debug_info);
+            LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}",
+                     event.reactor_id, event.tag);
 #endif
             event.reaction();
         }
@@ -412,8 +426,8 @@ private:
                     }
 
 #if LOG_LOGICAL_TIME
-                    LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}: {}",
-                             event->reactor_id, event->tag, event->debug_info);
+                    LOG_TRACE("ReactorScheduler: Executing event for reactor {} at tag {}",
+                             event->reactor_id, event->tag);
 #endif
                     event->reaction();
                 }

@@ -331,9 +331,15 @@ public:
 
     /**
      * Register a reaction callback
+     * Automatically resizes callback storage if needed for better performance.
      */
     void registerReaction(size_t global_index, ReactionCallback callback)
     {
+        // Ensure vector is large enough
+        if (global_index >= mCallbacks.size())
+        {
+            mCallbacks.resize(global_index + 1);
+        }
         mCallbacks[global_index] = std::move(callback);
     }
 
@@ -347,10 +353,9 @@ public:
     {
         for (size_t index : mTopologicalOrder.execution_order)
         {
-            auto it = mCallbacks.find(index);
-            if (it != mCallbacks.end())
+            if (index < mCallbacks.size() && mCallbacks[index])
             {
-                it->second();
+                mCallbacks[index]();
             }
         }
     }
@@ -367,10 +372,9 @@ public:
         {
             for (size_t index : level)
             {
-                auto it = mCallbacks.find(index);
-                if (it != mCallbacks.end())
+                if (index < mCallbacks.size() && mCallbacks[index])
                 {
-                    it->second();
+                    mCallbacks[index]();
                 }
             }
         }
@@ -406,10 +410,9 @@ public:
             if (level.size() == 1)
             {
                 size_t index = level[0];
-                auto it = mCallbacks.find(index);
-                if (it != mCallbacks.end())
+                if (index < mCallbacks.size() && mCallbacks[index])
                 {
-                    it->second();
+                    mCallbacks[index]();
                 }
                 continue;
             }
@@ -420,11 +423,10 @@ public:
 
             for (size_t index : level)
             {
-                auto it = mCallbacks.find(index);
-                if (it != mCallbacks.end())
+                if (index < mCallbacks.size() && mCallbacks[index])
                 {
                     // Capture callback by value to avoid dangling references
-                    auto callback = it->second;
+                    auto callback = mCallbacks[index];
                     futures.push_back(pool.enqueue([callback]() {
                         callback();
                     }));
@@ -450,7 +452,9 @@ public:
 private:
     const ReactionGraph& mGraph;
     TopologicalOrder mTopologicalOrder;
-    std::unordered_map<size_t, ReactionCallback> mCallbacks;
+    // Changed from unordered_map to vector for O(1) access and better cache locality
+    // std::optional would be ideal, but std::function is already nullable
+    std::vector<ReactionCallback> mCallbacks;
 };
 
 } // namespace services

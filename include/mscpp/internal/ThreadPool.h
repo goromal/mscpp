@@ -85,11 +85,16 @@ public:
      *
      * @param task Function to execute (void() signature)
      * @return Future for synchronization and exception handling
+     *
+     * Performance note: Uses shared_ptr for packaged_task to enable exception
+     * propagation. For better performance when exceptions are not expected,
+     * consider using enqueueNoFuture() instead.
      */
     template<typename F>
     std::future<void> enqueue(F&& task)
     {
         // Wrap task in a packaged_task for exception propagation
+        // Note: This allocates. Alternative: use custom future implementation
         auto packaged = std::make_shared<std::packaged_task<void()>>(std::forward<F>(task));
         std::future<void> result = packaged->get_future();
 
@@ -101,7 +106,7 @@ public:
                 throw std::runtime_error("ThreadPool: Cannot enqueue on stopped pool");
             }
 
-            mTaskQueue.emplace([packaged]() {
+            mTaskQueue.emplace([packaged = std::move(packaged)]() mutable {
                 (*packaged)();
             });
         }
