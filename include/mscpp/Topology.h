@@ -117,7 +117,24 @@ class ConnectionManager
 public:
     ConnectionManager(ReactorScheduler* scheduler)
         : mScheduler(scheduler)
+        , mAutoScheduleLogicalActions(false)
     {
+    }
+
+    /**
+     * Enable automatic logical action scheduling when ports receive values.
+     *
+     * When enabled, the destination reactor's executeLogicalAction() will be called
+     * automatically with action_name = "on_" + port_name when a value arrives.
+     *
+     * This enables event-driven reactors that respond immediately to port inputs
+     * without waiting for the next heartbeat.
+     *
+     * @param enabled True to enable automatic logical action scheduling
+     */
+    void setAutoScheduleLogicalActions(bool enabled)
+    {
+        mAutoScheduleLogicalActions = enabled;
     }
 
     /**
@@ -125,6 +142,9 @@ public:
      *
      * Sets up the OutputPort's callback to schedule events that
      * deliver values to the InputPort at the next microstep.
+     *
+     * Optionally schedules a logical action on the destination reactor
+     * to enable immediate event-driven processing.
      *
      * Template Parameters:
      * - T: Value type of the ports
@@ -136,7 +156,8 @@ public:
                  InputPort<T>& input_port,
                  size_t from_reactor_id,
                  size_t to_reactor_id,
-                 const std::string& connection_name)
+                 const std::string& connection_name,
+                 std::shared_ptr<IReactor> target_reactor = nullptr)
     {
         // Store connection metadata
         ConnectionInfo info;
@@ -147,11 +168,11 @@ public:
 
         // Set up the callback on the output port
         output_port.setScheduleCallback(
-            [this, &input_port, to_reactor_id, connection_name](T&& value)
+            [this, &input_port, to_reactor_id, connection_name, target_reactor](T&& value)
             {
                 // Schedule event to deliver value to input port
                 this->schedulePortEvent(std::move(value), input_port,
-                                       to_reactor_id, connection_name);
+                                       to_reactor_id, connection_name, target_reactor);
             }
         );
     }
@@ -196,7 +217,8 @@ private:
     void schedulePortEvent(T&& value,
                           InputPort<T>& input_port,
                           size_t reactor_id,
-                          const std::string& connection_name)
+                          const std::string& connection_name,
+                          std::shared_ptr<IReactor> target_reactor = nullptr)
     {
         if (!mScheduler)
         {
@@ -216,12 +238,30 @@ private:
             [&input_port, v = std::move(value)]() mutable
             {
                 input_port.set(std::move(v));
-            }
+            },
+            connection_name + " port delivery"
         );
+
+        // If auto-scheduling is enabled and we have a target reactor,
+        // also schedule a logical action to trigger immediate processing
+        if (mAutoScheduleLogicalActions && target_reactor)
+        {
+            LogicalTag action_tag = next_tag.next_microstep();
+            std::string action_name = "on_port_" + connection_name;
+
+            mScheduler->scheduleEvent(action_tag, reactor_id,
+                [target_reactor, action_tag, action_name]()
+                {
+                    target_reactor->executeLogicalAction(action_tag, action_name);
+                },
+                connection_name + " logical action"
+            );
+        }
     }
 
     ReactorScheduler* mScheduler;
     std::vector<ConnectionInfo> mConnections;
+    bool mAutoScheduleLogicalActions;
 };
 
 } // namespace services

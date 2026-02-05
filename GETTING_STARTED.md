@@ -10,8 +10,9 @@ This guide will walk you through creating your first reactors with the mscpp fra
 4. [FSM Reactor: State Machine with Ports](#4-fsm-reactor-state-machine-with-ports)
 5. [Using Auto-Clear Ports](#5-using-auto-clear-ports)
 6. [Convenient Port APIs](#6-convenient-port-apis)
-7. [Common Patterns and Best Practices](#7-common-patterns-and-best-practices)
-8. [Troubleshooting](#8-troubleshooting)
+7. [Logical Actions: Event-Driven Reactors](#7-logical-actions-event-driven-reactors)
+8. [Common Patterns and Best Practices](#8-common-patterns-and-best-practices)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -572,7 +573,320 @@ void doHeartbeat(const LogicalTag& tag) override
 
 ---
 
-## 8. Troubleshooting
+## 7. Logical Actions: Event-Driven Reactors
+
+So far, all reactors we've seen process events only at **heartbeat intervals** (time-triggered). This creates latency for request-response patterns where one reactor needs to call another and process the result.
+
+**Logical actions** solve this by enabling **event-driven** reactions that execute at the same logical time (advancing only the microstep, not physical time). This allows immediate responses without waiting for heartbeat intervals.
+
+### Two Execution Models
+
+1. **Heartbeats (Time-Triggered)**: Periodic reactions driven by physical time
+   - Use for: Periodic sampling, timeouts, time-based updates
+   - Example: Read sensor every 100ms
+
+2. **Logical Actions (Event-Triggered)**: Immediate reactions within same logical time
+   - Use for: Request-response patterns, event cascades, microservice calls
+   - Example: A calls B, B responds, A processes response—all at same logical instant
+
+### Basic Logical Action Example
+
+```cpp
+struct RequestResponseStore
+{
+    int requests_handled = 0;
+    std::string last_response;
+};
+
+struct ServicePorts
+{
+    InputPort<std::string> request_in;
+    OutputPort<std::string> response_out;
+};
+
+DEFINE_REACTOR(ServiceB, RequestResponseStore, ServicePorts, MicroServiceContainer<>)
+{
+public:
+    // Time-triggered: periodic work
+    void doHeartbeat(const LogicalTag& tag) override
+    {
+        // Check for timeouts, periodic cleanup, etc.
+    }
+
+    // Event-triggered: respond immediately to requests
+    void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
+    {
+        if (action == "on_request")
+        {
+            if (mPorts.request_in.is_present())
+            {
+                std::string request = mPorts.request_in.get();
+                std::string response = "Processed: " + request;
+
+                mStore.requests_handled++;
+                mStore.last_response = response;
+
+                // Send response (delivered at next microstep)
+                mPorts.response_out.set(response);
+            }
+        }
+    }
+
+    void clearPorts() override
+    {
+        mPorts.request_in.clear();
+    }
+};
+```
+
+### Scheduling Logical Actions
+
+There are three ways to schedule logical actions:
+
+#### 1. Manual Scheduling
+
+Call `scheduleLogicalAction()` from any reaction:
+
+```cpp
+void doHeartbeat(const LogicalTag& tag) override
+{
+    if (some_condition)
+    {
+        // Schedule logical action at next microstep
+        scheduleLogicalAction("process_data");
+    }
+}
+
+void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
+{
+    if (action == "process_data")
+    {
+        // Process immediately (logically)
+        performComputation();
+    }
+}
+```
+
+#### 2. Physical Actions (Time-Delayed)
+
+Schedule actions at a future logical time:
+
+```cpp
+void doHeartbeat(const LogicalTag& tag) override
+{
+    // Schedule timeout 5 seconds in the future
+    schedulePhysicalAction(std::chrono::seconds(5), "timeout");
+}
+
+void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
+{
+    if (action == "timeout")
+    {
+        handleTimeout();
+    }
+}
+```
+
+#### 3. Automatic Port-Triggered Actions (Advanced)
+
+Enable automatic logical action scheduling when ports receive values:
+
+```cpp
+ConnectionManager manager(&scheduler);
+manager.setAutoScheduleLogicalActions(true);
+
+// Now when producer writes to output_port, consumer's executeLogicalAction()
+// will be called automatically with action_name = "on_port_<connection_name>"
+manager.connect(
+    producer->getPorts().out,
+    consumer->getPorts().in,
+    producer->getId(),
+    consumer->getId(),
+    "data_feed",
+    consumer  // Pass target reactor for auto-scheduling
+);
+```
+
+### Complete Request-Response Example
+
+Here's a full example showing A→B→A pattern with zero logical time delay:
+
+```cpp
+// ServiceA: Makes requests and processes responses
+struct ServiceAStore
+{
+    int request_id = 0;
+    std::vector<std::string> responses;
+};
+
+struct ServiceAPorts
+{
+    OutputPort<std::string> request_out;
+    InputPort<std::string> response_in;
+};
+
+DEFINE_REACTOR(ServiceA, ServiceAStore, ServiceAPorts, MicroServiceContainer<>)
+{
+public:
+    void doHeartbeat(const LogicalTag& tag) override
+    {
+        // Time-triggered: send a request every heartbeat
+        std::string request = "Request#" + std::to_string(++mStore.request_id);
+        mPorts.request_out.set(request);
+
+        // Schedule logical action to process response
+        scheduleLogicalAction("check_response");
+    }
+
+    void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
+    {
+        if (action == "check_response")
+        {
+            if (mPorts.response_in.is_present())
+            {
+                std::string response = mPorts.response_in.get();
+                mStore.responses.push_back(response);
+                std::cout << "ServiceA received: " << response << std::endl;
+            }
+        }
+    }
+
+    void clearPorts() override
+    {
+        mPorts.response_in.clear();
+    }
+};
+
+// ServiceB: Handles requests immediately
+struct ServiceBStore { int handled = 0; };
+struct ServiceBPorts
+{
+    InputPort<std::string> request_in;
+    OutputPort<std::string> response_out;
+};
+
+DEFINE_REACTOR(ServiceB, ServiceBStore, ServiceBPorts, MicroServiceContainer<>)
+{
+public:
+    void doHeartbeat(const LogicalTag& tag) override
+    {
+        // Schedule action to handle requests
+        scheduleLogicalAction("handle_request");
+    }
+
+    void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
+    {
+        if (action == "handle_request")
+        {
+            if (mPorts.request_in.is_present())
+            {
+                std::string request = mPorts.request_in.get();
+                std::string response = "Echo: " + request;
+
+                mStore.handled++;
+                mPorts.response_out.set(response);
+            }
+        }
+    }
+
+    void clearPorts() override
+    {
+        mPorts.request_in.clear();
+    }
+};
+
+// Wiring
+int main()
+{
+    ReactorScheduler scheduler;
+    auto serviceA = std::make_shared<ServiceA>();
+    auto serviceB = std::make_shared<ServiceB>();
+
+    serviceA->setScheduler(&scheduler);
+    serviceB->setScheduler(&scheduler);
+    scheduler.registerReactor(serviceA);
+    scheduler.registerReactor(serviceB);
+
+    ConnectionManager manager(&scheduler);
+
+    // A -> B: request
+    manager.connect(serviceA->getPorts().request_out, serviceB->getPorts().request_in,
+                   serviceA->getId(), serviceB->getId(), "request");
+
+    // B -> A: response
+    manager.connect(serviceB->getPorts().response_out, serviceA->getPorts().response_in,
+                   serviceB->getId(), serviceA->getId(), "response");
+
+    scheduler.run();
+    return 0;
+}
+```
+
+### Execution Timeline
+
+With logical actions, the request-response happens at the same logical time:
+
+```
+Tag (0ms, 0):  ServiceA heartbeat sends request
+Tag (0ms, 1):  ServiceB's port receives request
+Tag (0ms, 2):  ServiceB's logical action processes request, sends response
+Tag (0ms, 3):  ServiceA's port receives response
+Tag (0ms, 4):  ServiceA's logical action processes response
+Tag (100ms, 0): Next heartbeat cycle
+```
+
+**Without logical actions**, this would take 3 heartbeat periods (300ms if heartbeats are 100ms apart).
+
+### Best Practices
+
+1. **Use heartbeats for periodic work**: Timers, sampling, periodic updates
+2. **Use logical actions for events**: Requests, responses, event cascades
+3. **Avoid infinite loops**: The scheduler will throw if >1000 microsteps at same time
+4. **Clear ports properly**: Logical actions still need port clearing between tags
+5. **Name actions clearly**: Use descriptive names like "on_request", "timeout", "retry"
+
+### Microstep Protection
+
+The scheduler prevents infinite microstep loops:
+
+```cpp
+// This will throw after 1000 microsteps:
+void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
+{
+    if (action == "loop")
+    {
+        scheduleLogicalAction("loop");  // Don't do this! Infinite loop.
+    }
+}
+```
+
+Error: `ReactorScheduler: Microstep limit exceeded (possible infinite loop)`
+
+---
+
+## 8. Common Patterns and Best Practices
+
+### Pattern: Conditional Output
+
+Only set output ports when certain conditions are met:
+
+```cpp
+void doHeartbeat(const LogicalTag& tag) override
+{
+    if (mPorts.trigger_in.is_present())
+    {
+        int result = compute();
+        if (result > threshold)
+        {
+            mPorts.alert_out.set(result);
+        }
+    }
+}
+```
+
+---
+
+## 9. Troubleshooting
 
 ### Problem: Stale data in input ports
 

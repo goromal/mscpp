@@ -154,20 +154,39 @@ public:
     }
 
     /**
-     * Check if reactor has pending inputs (queue-based model).
+     * Execute a logical action (event-triggered reaction).
+     *
+     * Logical actions enable immediate intra-tag event scheduling without physical time delay.
+     * They advance only the microstep counter, allowing event-driven request-response patterns
+     * to complete within the same logical time instant.
+     *
+     * Override this method to handle specific logical actions by name.
+     * The base implementation does nothing.
+     *
+     * @param tag Current logical tag
+     * @param action_name Name of the logical action to execute
+     */
+    void executeLogicalAction(const LogicalTag& tag, const std::string& action_name) override // ^^^^ why a string?
+    {
+        // Default implementation: no-op
+        // Subclasses override to handle specific actions
+        (void)tag;
+        (void)action_name;
+    }
+
+    /**
+     * Check if reactor has pending inputs (legacy queue-based model).
      *
      * @return false (port-based reactors don't use input queues)
      */
-    bool hasPendingInputs() const override { return false; } // ^^^^ why is this here if not used anywhere anymore?
+    bool hasPendingInputs() const override { return false; }
 
     /**
-     * Process next queued input (queue-based model).
+     * Process next queued input (legacy queue-based model).
      *
      * @param tag Current logical tag
-     * @return false (port-based reactors don't use input queues) // ^^^^ as in inherently can't??
-     */ // ^^^^ doesn't that limit processing speed, though?
-     // ^^^^ I know we have the container for quick store reads, but even the store can't be updated that rapidly...
-     // ^^^^ This is mainly a problem for A -> call B -> process in A -type operations. Seems like unnecessary latency.
+     * @return false (port-based reactors don't use input queues)
+     */
     bool processNextInput(const LogicalTag&) override { return false; }
 
     // ── Scheduler wiring ─────────────────────────────────────────────
@@ -183,14 +202,74 @@ public:
         mScheduler = scheduler;
     }
 
+    // ── Logical Actions ──────────────────────────────────────────────
+
+    /**
+     * Schedule a logical action (microstep advancement only, no physical time delay).
+     *
+     * Logical actions enable immediate event-driven reactions within the same logical time.
+     * This is useful for request-response patterns where A→B→A should complete at the
+     * same logical instant without waiting for heartbeat intervals.
+     *
+     * Example:
+     *   scheduleLogicalAction("on_request"); // Executes at (current_time, microstep+1)
+     *
+     * @param action_name Name of the logical action to schedule
+     */
+    void scheduleLogicalAction(const std::string& action_name)
+    {
+        if (mScheduler)
+        {
+            LogicalTag current = mScheduler->getCurrentTag();
+            LogicalTag next_microstep = current.next_microstep();
+
+            mScheduler->scheduleEvent(next_microstep, mReactorId,
+                [this, next_microstep, action_name]() {
+                    this->executeLogicalAction(next_microstep, action_name);
+                },
+                getName() + "::" + action_name);
+        }
+    }
+
+    /**
+     * Schedule a physical action (advances both time and resets microstep).
+     *
+     * Physical actions schedule reactions at a future logical time.
+     * Unlike logical actions, these advance physical time and are useful for
+     * timeouts, delays, and other time-dependent operations.
+     *
+     * Example:
+     *   schedulePhysicalAction(std::chrono::milliseconds(100), "timeout");
+     *
+     * @param delay Time delay from current tag
+     * @param action_name Name of the physical action to schedule
+     */
+    void schedulePhysicalAction(LogicalTime delay, const std::string& action_name)
+    {
+        if (mScheduler)
+        {
+            LogicalTag current = mScheduler->getCurrentTag();
+            LogicalTag future = current.advance_time(delay);
+
+            mScheduler->scheduleEvent(future, mReactorId,
+                [this, future, action_name]() {
+                    this->executeLogicalAction(future, action_name);
+                },
+                getName() + "::" + action_name);
+        }
+    }
+
     // ── Accessors ────────────────────────────────────────────────────
 
     /**
      * Get mutable reference to reactor state.
      *
+     * WARNING: Direct state access violates reactor encapsulation. Use with caution.
+     * Prefer message passing via ports for inter-reactor communication.
+     *
      * @return Reference to state store
      */
-    Store& getStore() { return mStore; } // ^^^^ hm bad idea?
+    Store& getStore() { return mStore; }
 
     /**
      * Get const reference to reactor state.

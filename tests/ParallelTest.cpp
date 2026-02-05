@@ -328,6 +328,7 @@ TEST_CASE("ReactorScheduler Parallel Execution", "[parallel][scheduler]")
             mHeartbeatCount++;
         }
 
+        void executeLogicalAction(const LogicalTag& /*tag*/, const std::string& /*action_name*/) override {}
         bool hasPendingInputs() const override { return false; }
         bool processNextInput(const LogicalTag& /*tag*/) override { return false; }
 

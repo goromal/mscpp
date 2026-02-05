@@ -83,13 +83,17 @@ public:
     // Initialize reactor state
     virtual void initialize() = 0;
 
-    // Execute one heartbeat reaction at the given tag
+    // Execute one heartbeat reaction at the given tag (time-triggered)
     virtual void executeHeartbeat(const LogicalTag& tag) = 0;
 
-    // Check if there are any pending inputs
+    // Execute a logical action at the given tag (event-triggered)
+    // Logical actions allow immediate intra-tag event scheduling (microstep advancement only)
+    virtual void executeLogicalAction(const LogicalTag& tag, const std::string& action_name) = 0;
+
+    // Check if there are any pending inputs (legacy queue-based model)
     virtual bool hasPendingInputs() const = 0;
 
-    // Process one input and return true if more inputs remain
+    // Process one input and return true if more inputs remain (legacy queue-based model)
     virtual bool processNextInput(const LogicalTag& tag) = 0;
 };
 
@@ -283,6 +287,10 @@ private:
     std::shared_ptr<ThreadPool> mThreadPool{nullptr};
     bool mParallelExecutionEnabled{false};
 
+    // Microstep loop protection: prevent infinite microstep chains
+    static constexpr uint32_t MAX_MICROSTEPS_PER_TAG = 1000;
+    uint32_t mMicrostepsAtCurrentTime{0};
+
     /**
      * Schedule initial heartbeat events for all reactors at tag (0, 0).
      */
@@ -326,6 +334,23 @@ private:
 
                 // Peek at next event's tag
                 LogicalTag nextTag = mEventQueue.top().tag;
+
+                // Check for microstep explosion (infinite loop protection)
+                if (nextTag.time == mCurrentTag.time)
+                {
+                    mMicrostepsAtCurrentTime++;
+                    if (mMicrostepsAtCurrentTime > MAX_MICROSTEPS_PER_TAG)
+                    {
+                        LOG_ERROR("ReactorScheduler: Microstep limit exceeded at tag {} "
+                                 "(possible infinite loop in logical actions)", nextTag);
+                        throw std::runtime_error("Microstep limit exceeded: possible infinite loop");
+                    }
+                }
+                else
+                {
+                    // New logical time, reset microstep counter
+                    mMicrostepsAtCurrentTime = 0;
+                }
 
                 // Dequeue all events at this tag using move semantics
                 eventsAtCurrentTag.reserve(mEventQueue.size());  // Pre-allocate
