@@ -1,951 +1,910 @@
-# Getting Started with mscpp Reactor Framework
+# Getting Started with mscpp FSM-Driven Reactors
 
-This guide will walk you through creating your first reactors with the mscpp framework. We'll progress from simple to complex examples.
+This guide teaches you how to build deterministic, testable reactors using mscpp's FSM-driven architecture. We'll progress from simple to complex examples, emphasizing the three-layer pattern: **Store → FSM States → Reactor**.
 
 ## Table of Contents
 
-1. [Hello World: Basic Reactor](#1-hello-world-basic-reactor)
-2. [Producer/Consumer: Port Communication](#2-producerconsumer-port-communication)
-3. [Transform Pipeline: Chained Reactors](#3-transform-pipeline-chained-reactors)
-4. [FSM Reactor: State Machine with Ports](#4-fsm-reactor-state-machine-with-ports)
-5. [Using Auto-Clear Ports](#5-using-auto-clear-ports)
-6. [Convenient Port APIs](#6-convenient-port-apis)
-7. [Logical Actions: Event-Driven Reactors](#7-logical-actions-event-driven-reactors)
-8. [Common Patterns and Best Practices](#8-common-patterns-and-best-practices)
-9. [Troubleshooting](#9-troubleshooting)
+1. [Core Concepts](#core-concepts)
+2. [Your First FSM Reactor](#your-first-fsm-reactor)
+3. [Adding Business Logic to Store](#adding-business-logic-to-store)
+4. [Multi-State FSM Example](#multi-state-fsm-example)
+5. [Understanding StepTrigger](#understanding-steptrigger)
+6. [Logical Actions for Event-Driven Patterns](#logical-actions-for-event-driven-patterns)
+7. [Port Communication Between Reactors](#port-communication-between-reactors)
+8. [Using I/O Adapters for Async Frameworks](#using-io-adapters-for-async-frameworks)
+9. [Testing Your Reactor](#testing-your-reactor)
+10. [Common Patterns and Best Practices](#common-patterns-and-best-practices)
 
 ---
 
-## 1. Hello World: Basic Reactor
+## Core Concepts
 
-Let's create the simplest possible reactor that prints a message on each heartbeat.
+### The Three-Layer Architecture
 
-### Step 1: Define the Reactor Components
+mscpp enforces a strict three-layer architecture for maximum testability and determinism:
+
+```
+┌─────────────────────────────────────┐
+│  Store (Pure Business Logic)        │  ← 100% unit testable
+│  • Pure functions only               │
+│  • No port/reactor dependencies      │
+└─────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────┐
+│  FSM States (Coordination Logic)    │  ← Integration testable
+│  • Reads ports → Calls Store → Sets │
+│  • State transitions                 │
+│  • NO business logic                 │
+└─────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────┐
+│  Reactor (Thin Shell)                │  ← Framework-provided
+│  • FINAL methods (can't override)    │
+│  • Private Store/Ports/Container     │
+│  • Deterministic execution           │
+└─────────────────────────────────────┘
+```
+
+### Key Terms
+
+- **Store**: Holds all mutable state and business logic as pure functions
+- **Ports**: Input/Output communication channels (typed, present/absent semantics)
+- **FSM States**: Finite State Machine states that coordinate Store + Ports
+- **StepTrigger**: Context about why a state's `step()` function was called
+- **Logical Tag**: `(time, microstep)` pair for deterministic event ordering
+- **Logical Action**: Event-driven reaction within same logical time (zero-delay)
+
+---
+
+## Your First FSM Reactor
+
+Let's create a simple counter reactor that demonstrates the FSM-driven pattern.
+
+### Step 1: Define the Store (Business Logic)
+
+**All business logic lives in the Store as pure functions:**
 
 ```cpp
 #include "mscpp/MicroServiceReactors.h"
 #include "mscpp/Ports.h"
-#include <iostream>
+#include "mscpp/StateSet.h"
+#include "mscpp/StepTrigger.h"
 
 using namespace services;
 
-// Step 1.1: Define the reactor's internal state
-struct HelloStore
-{
-    int heartbeat_count = 0;
-};
+// ═══════════════════════════════════════════════════════════════
+// STORE: Pure business logic (100% unit testable!)
+// ═══════════════════════════════════════════════════════════════
 
-// Step 1.2: Define the reactor's ports (none for this simple example)
-struct HelloPorts
-{
-    // Empty - no inputs or outputs
-};
+struct CounterStore {
+    int count{0};
 
-// Step 1.3: Use the DEFINE_REACTOR macro to reduce boilerplate
-DEFINE_REACTOR(HelloReactor, HelloStore, HelloPorts, MicroServiceContainer<>)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        mStore.heartbeat_count++;
-        std::cout << "Hello from reactor! Heartbeat #"
-                  << mStore.heartbeat_count
-                  << " at tag " << tag << std::endl;
+    // Pure function: takes input, returns output (no side effects)
+    int increment(int amount) {
+        count += amount;
+        return count;
     }
 
-    // No ports to clear
-    void clearPorts() override {}
-};
-```
-
-### Step 2: Run the Reactor
-
-```cpp
-#include "mscpp/ReactorScheduler.h"
-
-int main()
-{
-    // Create scheduler
-    ReactorScheduler scheduler;
-
-    // Create and register reactor
-    auto reactor = std::make_shared<HelloReactor>();
-    reactor->setScheduler(&scheduler);
-    scheduler.registerReactor(reactor);
-
-    // Run for a few heartbeats (will stop when queue empties)
-    scheduler.run();
-
-    return 0;
-}
-```
-
-**Key Concepts:**
-- **Store**: Holds reactor's mutable state
-- **Ports**: Define inputs/outputs (empty here)
-- **doHeartbeat()**: Called periodically at logical time intervals
-- **LogicalTag**: Represents (time, microstep) for deterministic execution
-
----
-
-## 2. Producer/Consumer: Port Communication
-
-Now let's create two reactors that communicate via ports.
-
-### Producer Reactor
-
-```cpp
-struct ProducerStore
-{
-    int counter = 0;
-};
-
-struct ProducerPorts
-{
-    OutputPort<int> value_out;  // Produces integers
-};
-
-DEFINE_REACTOR(Producer, ProducerStore, ProducerPorts, MicroServiceContainer<>)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        mStore.counter++;
-        mPorts.value_out.set(mStore.counter);  // Send value
-        std::cout << "Producer: sent " << mStore.counter << std::endl;
+    // Pure function: check threshold
+    bool isAboveThreshold(int threshold) const {
+        return count >= threshold;
     }
 
-    void clearPorts() override {}
-};
-```
-
-### Consumer Reactor
-
-```cpp
-struct ConsumerStore
-{
-    int last_received = 0;
-    int receive_count = 0;
-};
-
-struct ConsumerPorts
-{
-    InputPort<int> value_in;  // Receives integers
-};
-
-DEFINE_REACTOR(Consumer, ConsumerStore, ConsumerPorts, MicroServiceContainer<>)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        if (mPorts.value_in.is_present())
-        {
-            mStore.last_received = mPorts.value_in.get();
-            mStore.receive_count++;
-            std::cout << "Consumer: received " << mStore.last_received << std::endl;
-        }
-    }
-
-    void clearPorts() override
-    {
-        mPorts.value_in.clear();
+    void reset() {
+        count = 0;
     }
 };
-```
-
-### Connecting Reactors
-
-```cpp
-#include "mscpp/Topology.h"
-
-int main()
-{
-    ReactorScheduler scheduler;
-
-    auto producer = std::make_shared<Producer>();
-    auto consumer = std::make_shared<Consumer>();
-
-    producer->setScheduler(&scheduler);
-    consumer->setScheduler(&scheduler);
-
-    scheduler.registerReactor(producer);
-    scheduler.registerReactor(consumer);
-
-    // Wire output to input
-    ConnectionManager manager(&scheduler);
-    manager.connect(
-        producer->getPorts().value_out,
-        consumer->getPorts().value_in,
-        producer->getId(),
-        consumer->getId(),
-        "producer_to_consumer"
-    );
-
-    scheduler.run();
-    return 0;
-}
-```
-
-**Key Concepts:**
-- **OutputPort**: Set values that become available at next microstep
-- **InputPort**: Check presence with `is_present()`, get value with `get()`
-- **ConnectionManager**: Wires ports together for automatic event scheduling
-- **Port clearing**: Must clear input ports each tag (or use ENABLE_AUTO_CLEAR_PORTS)
-
----
-
-## 3. Transform Pipeline: Chained Reactors
-
-Create a pipeline where each reactor transforms the data.
-
-```cpp
-// Double: multiplies input by 2
-struct DoublerStore { int multiplier = 2; };
-struct DoublerPorts
-{
-    InputPort<int> value_in;
-    OutputPort<int> value_out;
-};
-
-DEFINE_REACTOR(Doubler, DoublerStore, DoublerPorts, MicroServiceContainer<>)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        if (mPorts.value_in.is_present())
-        {
-            int doubled = mPorts.value_in.get() * mStore.multiplier;
-            mPorts.value_out.set(doubled);
-        }
-    }
-
-    void clearPorts() override { mPorts.value_in.clear(); }
-};
-
-// Similar definitions for Incrementer, etc.
-
-// Wire them: Producer -> Doubler -> Incrementer -> Consumer
-```
-
----
-
-## 4. FSM Reactor: State Machine with Ports
-
-Let's create a simple protocol handler using a finite state machine combined with port-based I/O.
-
-### Define Protocol States and Inputs
-
-```cpp
-#include "mscpp/MicroServiceReactors.h"
-#include "mscpp/StateMachine.h"
-
-// Protocol message types
-enum class Message { CONNECT, DISCONNECT, DATA };
-
-struct ProtocolStore {
-    int messages_received = 0;
-    bool authenticated = false;
-};
-
-struct ProtocolPorts {
-    InputPort<Message> msg_in;
-    OutputPort<std::string> response_out;
-};
-```
-
-### Define FSM States
-
-```cpp
-// State 0: Disconnected
-struct DisconnectedState {
-    size_t step(ProtocolStore& store, ProtocolPorts& ports,
-                const MicroServiceContainer<>& c, Message& msg) {
-        if (msg == Message::CONNECT) {
-            ports.response_out.set("Connected");
-            return 1; // Transition to ConnectedState
-        }
-        ports.response_out.set("Error: Not connected");
-        return 0; // Stay in Disconnected
-    }
-};
-
-// State 1: Connected
-struct ConnectedState {
-    size_t step(ProtocolStore& store, ProtocolPorts& ports,
-                const MicroServiceContainer<>& c, Message& msg) {
-        if (msg == Message::DISCONNECT) {
-            ports.response_out.set("Disconnected");
-            store.authenticated = false;
-            return 0; // Back to DisconnectedState
-        }
-        if (msg == Message::DATA) {
-            store.messages_received++;
-            ports.response_out.set("Data received: " +
-                                   std::to_string(store.messages_received));
-        }
-        return 1; // Stay in Connected
-    }
-};
-
-using ProtocolStates = StateSet<DisconnectedState, ConnectedState>;
-```
-
-### Create FSM Reactor
-
-```cpp
-DEFINE_FSM_REACTOR(ProtocolHandler, ProtocolStore, ProtocolPorts,
-                   MicroServiceContainer<>, ProtocolStates)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override {
-        // Process incoming messages
-        mPorts.msg_in.if_present([this](Message msg) {
-            EXECUTE_FSM_INPUT(msg);
-        });
-    }
-};
-
-// Auto-clear ports
-ENABLE_AUTO_CLEAR_PORTS(ProtocolPorts, msg_in);
-```
-
-### Use the FSM Reactor
-
-```cpp
-int main() {
-    ReactorScheduler scheduler;
-
-    auto protocol = std::make_shared<ProtocolHandler>();
-    protocol->setScheduler(&scheduler);
-    scheduler.registerReactor(protocol);
-
-    // Send messages to the FSM
-    protocol->getPorts().msg_in.set(Message::CONNECT);
-
-    scheduler.run();
-    return 0;
-}
 ```
 
 **Key Points:**
-- FSM reactors combine deterministic state machines with reactive port I/O
-- State transitions are explicit (return state index)
-- States can access ports, store, and container
-- Use `DEFINE_FSM_REACTOR` macro for clean syntax
-- Check current state with `getCurrentState()`
+- Store contains ALL business logic
+- Functions should be pure (or minimal mutation)
+- No dependencies on ports, reactor, or I/O
+- Easy to unit test: `CounterStore s; REQUIRE(s.increment(5) == 5);`
 
----
-
-## 5. Using Auto-Clear Ports
-
-Instead of manually clearing ports, use the `ENABLE_AUTO_CLEAR_PORTS` macro:
+### Step 2: Define the Ports (I/O Interface)
 
 ```cpp
-struct MyPorts
-{
-    InputPort<int> counter_in;
-    InputPort<std::string> message_in;
-    OutputPort<int> result_out;
+// ═══════════════════════════════════════════════════════════════
+// PORTS: Input/Output communication channels
+// ═══════════════════════════════════════════════════════════════
+
+struct CounterPorts {
+    InputPort<int> increment_in;
+    InputPort<int> threshold_in;
+    OutputPort<int> count_out;
+    OutputPort<bool> alert_out;
+};
+```
+
+### Step 3: Define the FSM State (Coordination Logic)
+
+**FSM states coordinate Store + Ports - NO business logic here!**
+
+```cpp
+// ═══════════════════════════════════════════════════════════════
+// FSM STATE: Coordination logic (NO business logic!)
+// ═══════════════════════════════════════════════════════════════
+
+struct RunningState : public State<RunningState, 0> {
+    size_t step(CounterStore& store,
+                CounterPorts& ports,
+                const MicroServiceContainer<>& container,
+                const LogicalTag& tag,
+                const StepTrigger& trigger) override {
+
+        // Pattern: Check trigger → Read ports → Call Store → Write ports
+
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION) {
+            if (trigger.action_name == "on_increment") {
+                // 1. Read input port
+                if (ports.increment_in.is_present()) {
+                    int amount = ports.increment_in.get();
+
+                    // 2. Call Store business logic (pure function!)
+                    int new_count = store.increment(amount);
+
+                    // 3. Write output port
+                    ports.count_out.set(new_count);
+
+                    // 4. Check threshold using Store function
+                    if (ports.threshold_in.is_present()) {
+                        int threshold = ports.threshold_in.get();
+                        if (store.isAboveThreshold(threshold)) {
+                            ports.alert_out.set(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stay in same state (no transition)
+        return RunningState::index();
+    }
 };
 
-// Enable automatic clearing (list all input ports)
-ENABLE_AUTO_CLEAR_PORTS(MyPorts, counter_in, message_in);
+// Create StateSet with all FSM states
+using CounterStates = StateSet<RunningState>;
+```
 
-DEFINE_REACTOR(MyReactor, MyStore, MyPorts, MicroServiceContainer<>)
-{
+**Key Pattern:**
+1. Check `trigger.type` and `trigger.action_name` to determine context
+2. Read from input ports (`is_present()`, `get()`)
+3. Call Store pure functions (business logic)
+4. Write to output ports (`set()`)
+5. Return next state index
+
+### Step 4: Define the Reactor (Thin Wrapper)
+
+**The reactor is just a type alias - no code needed!**
+
+```cpp
+// ═══════════════════════════════════════════════════════════════
+// REACTOR: Thin wrapper (no overrides needed!)
+// ═══════════════════════════════════════════════════════════════
+
+class CounterReactor : public MicroServiceFSMReactor<
+    CounterStore,
+    CounterPorts,
+    MicroServiceContainer<>,
+    CounterStates
+> {
 public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        // Process inputs
-    }
+    using Base = MicroServiceFSMReactor<CounterStore, CounterPorts,
+                                        MicroServiceContainer<>, CounterStates>;
 
-    // No need to override clearPorts() - automatic!
+    CounterReactor(const std::string& name,
+                   const std::map<std::string, std::string>& port_action_map)
+        : Base(name, MicroServiceContainer<>{}, port_action_map) {}
 };
 ```
 
----
+**Important:**
+- Reactor inherits from `MicroServiceFSMReactor`
+- `doHeartbeat()` and `executeLogicalAction()` are **final** (can't override!)
+- `mStore`, `mPorts`, `mContainer` are **private** (only FSM states can access)
+- All logic is in Store (business) and FSM States (coordination)
 
-## 6. Convenient Port APIs
-
-The framework provides several convenience methods:
-
-### if_present(): Callback-based processing
-
-```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    mPorts.counter_in.if_present([&](int value) {
-        std::cout << "Received: " << value << std::endl;
-        mStore.total += value;
-    });
-}
-```
-
-### transform(): Functional transformation
+### Step 5: Use Your Reactor
 
 ```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    auto doubled = mPorts.counter_in.transform([](int x) { return x * 2; });
-    if (doubled) {
-        mPorts.counter_out.set(*doubled);
-    }
-}
-```
+int main() {
+    // Create reactor with port→action mapping
+    std::map<std::string, std::string> port_actions = {
+        {"increment_in", "on_increment"}
+    };
 
-### map_to(): Direct port-to-port mapping
+    CounterReactor reactor("counter", port_actions);
 
-```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    // Automatically transform and send if present
-    mPorts.counter_in.map_to(mPorts.counter_out, [](int x) { return x * 2; });
-}
-```
+    // Set input ports
+    reactor.getPorts().increment_in.set(5);
+    reactor.getPorts().threshold_in.set(10);
 
-### try_get(): Optional-like access
+    // Trigger logical action
+    LogicalTag tag{LogicalTime{1000000000}};  // 1 second
+    reactor.executeLogicalAction(tag, "on_increment");
 
-```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    if (auto value = mPorts.counter_in.try_get())
-    {
-        // Use *value
-        mStore.last = *value;
-    }
+    // Check output
+    REQUIRE(reactor.getStore().count == 5);
+
+    return 0;
 }
 ```
 
 ---
 
-## 7. Common Patterns and Best Practices
+## Adding Business Logic to Store
 
-### Pattern 1: Initialization
+### Pattern: Keep Store Functions Pure
 
-Override `initialize()` to set up initial state:
-
-```cpp
-void initialize() override
-{
-    mStore.start_time = std::chrono::steady_clock::now();
-    mStore.status = "initialized";
-}
-```
-
-### Pattern 2: Custom Heartbeat Rate
-
-Override `heartbeatDuration()`:
+**BAD - Business logic in FSM state:**
 
 ```cpp
-LogicalTime heartbeatDuration() const override
-{
-    return LogicalTime(100'000'000);  // 100ms
-}
+// ❌ DON'T DO THIS
+struct BadState : public State<BadState, 0> {
+    size_t step(...) {
+        if (ports.request_in.is_present()) {
+            auto request = ports.request_in.get();
+
+            // Business logic HERE - can't unit test!
+            if (request.priority > 5 && store.queue.size() < 100) {
+                store.queue.push(request);
+                ports.success_out.set(true);
+            } else {
+                ports.error_out.set("Queue full or low priority");
+            }
+        }
+        return BadState::index();
+    }
+};
 ```
 
-### Pattern 3: State Machines with Ports
-
-Combine FSM states with port-based I/O using the `DEFINE_FSM_REACTOR` macro:
+**GOOD - Business logic in Store:**
 
 ```cpp
-#include "mscpp/MicroServiceReactors.h"
-#include "mscpp/StateMachine.h"
+// ✅ DO THIS
+struct GoodStore {
+    std::vector<Request> queue;
 
-// Define command input type
-enum class Command { START, STOP, RESET };
+    struct EnqueueResult {
+        bool success;
+        std::string error_message;
+    };
 
-// Define state store
-struct TrafficLightStore {
-    int cycle_count = 0;
-    LogicalTime state_start_time{0};
-};
-
-// Define ports
-struct TrafficLightPorts {
-    InputPort<Command> command_in;
-    OutputPort<std::string> status_out;
-};
-
-// Define states using StateSet
-struct IdleState {
-    size_t step(TrafficLightStore& store, TrafficLightPorts& ports,
-                const MicroServiceContainer<>& c, Command& cmd) {
-        if (cmd == Command::START) {
-            ports.status_out.set("GREEN");
-            return 1; // Transition to GreenState
+    // Pure business logic (unit testable!)
+    EnqueueResult enqueue(const Request& request, size_t max_queue_size) {
+        if (request.priority <= 5) {
+            return {false, "Priority too low"};
         }
-        return 0; // Stay in IdleState
-    }
-};
-
-struct GreenState {
-    size_t step(TrafficLightStore& store, TrafficLightPorts& ports,
-                const MicroServiceContainer<>& c, Command& cmd) {
-        if (cmd == Command::STOP) {
-            ports.status_out.set("IDLE");
-            return 0; // Back to IdleState
+        if (queue.size() >= max_queue_size) {
+            return {false, "Queue full"};
         }
-        // Auto-transition to yellow after timeout
-        ports.status_out.set("YELLOW");
-        return 2; // Transition to YellowState
+        queue.push_back(request);
+        return {true, ""};
     }
 };
 
-struct YellowState {
-    size_t step(TrafficLightStore& store, TrafficLightPorts& ports,
-                const MicroServiceContainer<>& c, Command& cmd) {
-        if (cmd == Command::STOP) {
-            ports.status_out.set("IDLE");
-            return 0;
+struct GoodState : public State<GoodState, 0> {
+    size_t step(...) {
+        if (ports.request_in.is_present()) {
+            auto request = ports.request_in.get();
+
+            // Delegate to Store (business logic!)
+            auto result = store.enqueue(request, 100);
+
+            // Just coordination here
+            if (result.success) {
+                ports.success_out.set(true);
+            } else {
+                ports.error_out.set(result.error_message);
+            }
         }
-        // Auto-transition to red
-        ports.status_out.set("RED");
-        store.cycle_count++;
-        return 3; // Transition to RedState
+        return GoodState::index();
     }
 };
-
-struct RedState {
-    size_t step(TrafficLightStore& store, TrafficLightPorts& ports,
-                const MicroServiceContainer<>& c, Command& cmd) {
-        if (cmd == Command::STOP) {
-            ports.status_out.set("IDLE");
-            return 0;
-        }
-        if (cmd == Command::RESET) {
-            store.cycle_count = 0;
-            ports.status_out.set("GREEN");
-            return 1;
-        }
-        // Auto-transition back to green
-        ports.status_out.set("GREEN");
-        return 1;
-    }
-};
-
-using TrafficLightStates = StateSet<IdleState, GreenState, YellowState, RedState>;
-
-// Define FSM reactor using the macro
-DEFINE_FSM_REACTOR(TrafficLightReactor, TrafficLightStore, TrafficLightPorts,
-                   MicroServiceContainer<>, TrafficLightStates)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override {
-        // Process commands from input port
-        ports.command_in.if_present([this](Command cmd) {
-            EXECUTE_FSM_INPUT(cmd);
-        });
-    }
-
-    void clearPorts() override {
-        mPorts.command_in.clear();
-    }
-};
-
-// Or use ENABLE_AUTO_CLEAR_PORTS
-ENABLE_AUTO_CLEAR_PORTS(TrafficLightPorts, command_in);
 ```
 
-**Key FSM Concepts:**
-- States return the index of the next state (0 = stay, other = transition)
-- States can read input ports and write output ports
-- Use `EXECUTE_FSM_INPUT(input)` macro to dispatch inputs
-- FSM state is preserved across heartbeats
-- Get current state with `getCurrentState()`
-
-### Pattern 4: Conditional Output
-
-Only set output when condition met:
-
-```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    if (mPorts.trigger_in.is_present())
-    {
-        int result = compute();
-        if (result > threshold)
-        {
-            mPorts.alert_out.set(result);
-        }
-    }
-}
-```
+**Benefits:**
+- ✅ Unit test `enqueue()` without reactor infrastructure
+- ✅ Business logic is explicit and reusable
+- ✅ FSM state is simple coordination code
 
 ---
 
-## 7. Logical Actions: Event-Driven Reactors
+## Multi-State FSM Example
 
-So far, all reactors we've seen process events only at **heartbeat intervals** (time-triggered). This creates latency for request-response patterns where one reactor needs to call another and process the result.
-
-**Logical actions** solve this by enabling **event-driven** reactions that execute at the same logical time (advancing only the microstep, not physical time). This allows immediate responses without waiting for heartbeat intervals.
-
-### Two Execution Models
-
-1. **Heartbeats (Time-Triggered)**: Periodic reactions driven by physical time
-   - Use for: Periodic sampling, timeouts, time-based updates
-   - Example: Read sensor every 100ms
-
-2. **Logical Actions (Event-Triggered)**: Immediate reactions within same logical time
-   - Use for: Request-response patterns, event cascades, microservice calls
-   - Example: A calls B, B responds, A processes response—all at same logical instant
-
-### Basic Logical Action Example
+Let's create a protocol handler with multiple states:
 
 ```cpp
-struct RequestResponseStore
-{
-    int requests_handled = 0;
-    std::string last_response;
+// Store with state-specific data
+struct ProtocolStore {
+    std::string session_id;
+    int messages_received{0};
+    bool authenticated{false};
+
+    // Business logic
+    bool validateCredentials(const std::string& username,
+                           const std::string& password) const {
+        return username == "admin" && password == "secret";
+    }
+
+    void startSession(const std::string& id) {
+        session_id = id;
+        authenticated = false;
+        messages_received = 0;
+    }
+
+    void processMessage(const std::string& msg) {
+        messages_received++;
+    }
 };
 
-struct ServicePorts
-{
-    InputPort<std::string> request_in;
+struct ProtocolPorts {
+    InputPort<std::string> command_in;
     OutputPort<std::string> response_out;
 };
 
-DEFINE_REACTOR(ServiceB, RequestResponseStore, ServicePorts, MicroServiceContainer<>)
-{
-public:
-    // Time-triggered: periodic work
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        // Check for timeouts, periodic cleanup, etc.
-    }
+// State 0: Disconnected
+struct DisconnectedState : public State<DisconnectedState, 0> {
+    size_t step(ProtocolStore& s, ProtocolPorts& p,
+                const MicroServiceContainer<>& c,
+                const LogicalTag& tag,
+                const StepTrigger& trigger) override {
 
-    // Event-triggered: respond immediately to requests
-    void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
-    {
-        if (action == "on_request")
-        {
-            if (mPorts.request_in.is_present())
-            {
-                std::string request = mPorts.request_in.get();
-                std::string response = "Processed: " + request;
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION &&
+            trigger.action_name == "on_command") {
+            if (p.command_in.is_present()) {
+                auto cmd = p.command_in.get();
 
-                mStore.requests_handled++;
-                mStore.last_response = response;
-
-                // Send response (delivered at next microstep)
-                mPorts.response_out.set(response);
+                if (cmd.substr(0, 7) == "CONNECT") {
+                    s.startSession("session_" + std::to_string(tag.time.count()));
+                    p.response_out.set("200 Connected. Please authenticate.");
+                    return ConnectedState::index();  // Transition to state 1
+                } else {
+                    p.response_out.set("400 Not connected");
+                }
             }
         }
-    }
 
-    void clearPorts() override
-    {
-        mPorts.request_in.clear();
+        return DisconnectedState::index();  // Stay in state 0
+    }
+};
+
+// State 1: Connected (awaiting authentication)
+struct ConnectedState : public State<ConnectedState, 1> {
+    size_t step(ProtocolStore& s, ProtocolPorts& p,
+                const MicroServiceContainer<>& c,
+                const LogicalTag& tag,
+                const StepTrigger& trigger) override {
+
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION &&
+            trigger.action_name == "on_command") {
+            if (p.command_in.is_present()) {
+                auto cmd = p.command_in.get();
+
+                if (cmd.substr(0, 4) == "AUTH") {
+                    // Parse credentials (simplified)
+                    std::string username = "admin", password = "secret";
+
+                    if (s.validateCredentials(username, password)) {
+                        s.authenticated = true;
+                        p.response_out.set("200 Authenticated");
+                        return AuthenticatedState::index();  // Transition to state 2
+                    } else {
+                        p.response_out.set("401 Authentication failed");
+                    }
+                } else if (cmd == "DISCONNECT") {
+                    p.response_out.set("200 Disconnected");
+                    return DisconnectedState::index();  // Back to state 0
+                } else {
+                    p.response_out.set("401 Not authenticated");
+                }
+            }
+        }
+
+        return ConnectedState::index();
+    }
+};
+
+// State 2: Authenticated (can process messages)
+struct AuthenticatedState : public State<AuthenticatedState, 2> {
+    size_t step(ProtocolStore& s, ProtocolPorts& p,
+                const MicroServiceContainer<>& c,
+                const LogicalTag& tag,
+                const StepTrigger& trigger) override {
+
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION &&
+            trigger.action_name == "on_command") {
+            if (p.command_in.is_present()) {
+                auto cmd = p.command_in.get();
+
+                if (cmd == "DISCONNECT") {
+                    p.response_out.set("200 Disconnected");
+                    return DisconnectedState::index();
+                } else if (cmd.substr(0, 4) == "DATA") {
+                    s.processMessage(cmd);
+                    p.response_out.set("200 Message received (" +
+                                      std::to_string(s.messages_received) + " total)");
+                } else {
+                    p.response_out.set("400 Unknown command");
+                }
+            }
+        }
+
+        return AuthenticatedState::index();
+    }
+};
+
+using ProtocolStates = StateSet<DisconnectedState, ConnectedState, AuthenticatedState>;
+
+class ProtocolReactor : public MicroServiceFSMReactor<
+    ProtocolStore, ProtocolPorts, MicroServiceContainer<>, ProtocolStates
+> {
+public:
+    using Base = MicroServiceFSMReactor<ProtocolStore, ProtocolPorts,
+                                        MicroServiceContainer<>, ProtocolStates>;
+
+    ProtocolReactor(const std::string& name)
+        : Base(name, MicroServiceContainer<>{}, {{"command_in", "on_command"}}) {}
+};
+```
+
+**FSM State Transitions:**
+```
+Disconnected (0) ---CONNECT---> Connected (1) ---AUTH---> Authenticated (2)
+       ↑                             |                          |
+       |                             |                          |
+       +-------------DISCONNECT------+----------DISCONNECT------+
+```
+
+---
+
+## Understanding StepTrigger
+
+The `StepTrigger` parameter tells FSM states **why** they were invoked:
+
+```cpp
+struct StepTrigger {
+    enum class Type {
+        HEARTBEAT,        // Regular periodic tick
+        LOGICAL_ACTION,   // Event-driven action (zero-delay)
+        PHYSICAL_ACTION   // Future: scheduled action
+    };
+
+    Type type;
+    std::string action_name;  // Set for LOGICAL_ACTION
+};
+```
+
+### Usage Patterns
+
+```cpp
+struct MyState : public State<MyState, 0> {
+    size_t step(..., const StepTrigger& trigger) override {
+
+        // Handle heartbeat (periodic work)
+        if (trigger.type == StepTrigger::Type::HEARTBEAT) {
+            // Periodic maintenance, timeouts, etc.
+            store.checkTimeouts(tag.time);
+        }
+
+        // Handle specific logical action
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION) {
+            if (trigger.action_name == "process_request") {
+                // Handle request event
+            }
+            else if (trigger.action_name == "handle_timeout") {
+                // Handle timeout event
+            }
+        }
+
+        return MyState::index();
     }
 };
 ```
 
-### Scheduling Logical Actions
+---
 
-There are three ways to schedule logical actions:
+## Logical Actions for Event-Driven Patterns
 
-#### 1. Manual Scheduling
+### Why Logical Actions?
 
-Call `scheduleLogicalAction()` from any reaction:
+**Without logical actions** (heartbeat-only), request-response takes multiple heartbeat periods:
 
-```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    if (some_condition)
-    {
-        // Schedule logical action at next microstep
-        scheduleLogicalAction("process_data");
-    }
-}
-
-void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
-{
-    if (action == "process_data")
-    {
-        // Process immediately (logically)
-        performComputation();
-    }
-}
+```
+Time 0ms:   ServiceA sends request
+Time 100ms: ServiceB receives request (heartbeat delay)
+Time 200ms: ServiceB sends response (heartbeat delay)
+Time 300ms: ServiceA receives response (heartbeat delay)
+Total: 300ms latency!
 ```
 
-#### 2. Physical Actions (Time-Delayed)
+**With logical actions** (event-driven), everything happens at same logical time:
 
-Schedule actions at a future logical time:
-
-```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    // Schedule timeout 5 seconds in the future
-    schedulePhysicalAction(std::chrono::seconds(5), "timeout");
-}
-
-void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
-{
-    if (action == "timeout")
-    {
-        handleTimeout();
-    }
-}
+```
+Tag (0ms, 0): ServiceA sends request
+Tag (0ms, 1): ServiceB receives request (next microstep)
+Tag (0ms, 2): ServiceB processes and sends response (same logical time!)
+Tag (0ms, 3): ServiceA receives response
+Total: 0ms logical latency!
 ```
 
-#### 3. Automatic Port-Triggered Actions (Advanced)
-
-Enable automatic logical action scheduling when ports receive values:
+### Example: Request-Response Pattern
 
 ```cpp
-ConnectionManager manager(&scheduler);
-manager.setAutoScheduleLogicalActions(true);
-
-// Now when producer writes to output_port, consumer's executeLogicalAction()
-// will be called automatically with action_name = "on_port_<connection_name>"
-manager.connect(
-    producer->getPorts().out,
-    consumer->getPorts().in,
-    producer->getId(),
-    consumer->getId(),
-    "data_feed",
-    consumer  // Pass target reactor for auto-scheduling
-);
-```
-
-### Complete Request-Response Example
-
-Here's a full example showing A→B→A pattern with zero logical time delay:
-
-```cpp
-// ServiceA: Makes requests and processes responses
-struct ServiceAStore
-{
-    int request_id = 0;
+// Service that makes requests
+class ClientStore {
+public:
+    int pending_requests{0};
     std::vector<std::string> responses;
+
+    void sendRequest() { pending_requests++; }
+    void receiveResponse(const std::string& resp) {
+        responses.push_back(resp);
+        pending_requests--;
+    }
 };
 
-struct ServiceAPorts
-{
+struct ClientPorts {
     OutputPort<std::string> request_out;
     InputPort<std::string> response_in;
 };
 
-DEFINE_REACTOR(ServiceA, ServiceAStore, ServiceAPorts, MicroServiceContainer<>)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        // Time-triggered: send a request every heartbeat
-        std::string request = "Request#" + std::to_string(++mStore.request_id);
-        mPorts.request_out.set(request);
+struct ClientState : public State<ClientState, 0> {
+    size_t step(ClientStore& s, ClientPorts& p,
+                const MicroServiceContainer<>& c,
+                const LogicalTag& tag,
+                const StepTrigger& trigger) override {
 
-        // Schedule logical action to process response
-        scheduleLogicalAction("check_response");
-    }
+        // Heartbeat: send periodic request
+        if (trigger.type == StepTrigger::Type::HEARTBEAT) {
+            s.sendRequest();
+            p.request_out.set("REQUEST_" + std::to_string(tag.time.count()));
+        }
 
-    void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
-    {
-        if (action == "check_response")
-        {
-            if (mPorts.response_in.is_present())
-            {
-                std::string response = mPorts.response_in.get();
-                mStore.responses.push_back(response);
-                std::cout << "ServiceA received: " << response << std::endl;
+        // Logical action: handle response immediately
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION &&
+            trigger.action_name == "on_response") {
+            if (p.response_in.is_present()) {
+                s.receiveResponse(p.response_in.get());
             }
         }
-    }
 
-    void clearPorts() override
-    {
-        mPorts.response_in.clear();
+        return ClientState::index();
     }
 };
 
-// ServiceB: Handles requests immediately
-struct ServiceBStore { int handled = 0; };
-struct ServiceBPorts
-{
+// Service that handles requests
+struct ServerStore {
+    int requests_handled{0};
+
+    std::string processRequest(const std::string& req) {
+        requests_handled++;
+        return "RESPONSE_TO_" + req;
+    }
+};
+
+struct ServerPorts {
     InputPort<std::string> request_in;
     OutputPort<std::string> response_out;
 };
 
-DEFINE_REACTOR(ServiceB, ServiceBStore, ServiceBPorts, MicroServiceContainer<>)
-{
-public:
-    void doHeartbeat(const LogicalTag& tag) override
-    {
-        // Schedule action to handle requests
-        scheduleLogicalAction("handle_request");
-    }
+struct ServerState : public State<ServerState, 0> {
+    size_t step(ServerStore& s, ServerPorts& p,
+                const MicroServiceContainer<>& c,
+                const LogicalTag& tag,
+                const StepTrigger& trigger) override {
 
-    void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
-    {
-        if (action == "handle_request")
-        {
-            if (mPorts.request_in.is_present())
-            {
-                std::string request = mPorts.request_in.get();
-                std::string response = "Echo: " + request;
-
-                mStore.handled++;
-                mPorts.response_out.set(response);
+        // Logical action: handle request immediately
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION &&
+            trigger.action_name == "on_request") {
+            if (p.request_in.is_present()) {
+                auto response = s.processRequest(p.request_in.get());
+                p.response_out.set(response);
             }
         }
-    }
 
-    void clearPorts() override
-    {
-        mPorts.request_in.clear();
+        return ServerState::index();
     }
 };
+```
 
-// Wiring
-int main()
-{
+### Port Action Mapping
+
+Connect ports to logical actions using the port action map:
+
+```cpp
+std::map<std::string, std::string> client_actions = {
+    {"response_in", "on_response"}  // When response_in gets data, trigger "on_response"
+};
+
+std::map<std::string, std::string> server_actions = {
+    {"request_in", "on_request"}  // When request_in gets data, trigger "on_request"
+};
+
+ClientReactor client("client", client_actions);
+ServerReactor server("server", server_actions);
+```
+
+---
+
+## Port Communication Between Reactors
+
+Use `ConnectionManager` to wire reactors together:
+
+```cpp
+#include "mscpp/ReactorScheduler.h"
+#include "mscpp/Topology.h"
+
+int main() {
     ReactorScheduler scheduler;
-    auto serviceA = std::make_shared<ServiceA>();
-    auto serviceB = std::make_shared<ServiceB>();
 
-    serviceA->setScheduler(&scheduler);
-    serviceB->setScheduler(&scheduler);
-    scheduler.registerReactor(serviceA);
-    scheduler.registerReactor(serviceB);
+    // Create reactors
+    auto client = std::make_shared<ClientReactor>("client", client_actions);
+    auto server = std::make_shared<ServerReactor>("server", server_actions);
 
+    // Register with scheduler
+    client->setScheduler(&scheduler);
+    server->setScheduler(&scheduler);
+    scheduler.registerReactor(client);
+    scheduler.registerReactor(server);
+
+    // Wire ports together
     ConnectionManager manager(&scheduler);
 
-    // A -> B: request
-    manager.connect(serviceA->getPorts().request_out, serviceB->getPorts().request_in,
-                   serviceA->getId(), serviceB->getId(), "request");
+    // Client request → Server request
+    manager.connect(
+        client->getPorts().request_out,
+        server->getPorts().request_in,
+        client->getId(),
+        server->getId(),
+        "client_to_server"
+    );
 
-    // B -> A: response
-    manager.connect(serviceB->getPorts().response_out, serviceA->getPorts().response_in,
-                   serviceB->getId(), serviceA->getId(), "response");
+    // Server response → Client response
+    manager.connect(
+        server->getPorts().response_out,
+        client->getPorts().response_in,
+        server->getId(),
+        client->getId(),
+        "server_to_client"
+    );
 
+    // Run scheduler
     scheduler.run();
+
     return 0;
 }
 ```
 
-### Execution Timeline
+---
 
-With logical actions, the request-response happens at the same logical time:
+## Using I/O Adapters for Async Frameworks
 
-```
-Tag (0ms, 0):  ServiceA heartbeat sends request
-Tag (0ms, 1):  ServiceB's port receives request
-Tag (0ms, 2):  ServiceB's logical action processes request, sends response
-Tag (0ms, 3):  ServiceA's port receives response
-Tag (0ms, 4):  ServiceA's logical action processes response
-Tag (100ms, 0): Next heartbeat cycle
-```
-
-**Without logical actions**, this would take 3 heartbeat periods (300ms if heartbeats are 100ms apart).
-
-### Best Practices
-
-1. **Use heartbeats for periodic work**: Timers, sampling, periodic updates
-2. **Use logical actions for events**: Requests, responses, event cascades
-3. **Avoid infinite loops**: The scheduler will throw if >1000 microsteps at same time
-4. **Clear ports properly**: Logical actions still need port clearing between tags
-5. **Name actions clearly**: Use descriptive names like "on_request", "timeout", "retry"
-
-### Microstep Protection
-
-The scheduler prevents infinite microstep loops:
+For async I/O frameworks (gRPC, ROS2), use **I/O Adapters** to maintain determinism:
 
 ```cpp
-// This will throw after 1000 microsteps:
-void executeLogicalAction(const LogicalTag& tag, const std::string& action) override
-{
-    if (action == "loop")
-    {
-        scheduleLogicalAction("loop");  // Don't do this! Infinite loop.
+#include "mscpp/IOAdapters/GrpcAdapter.h"
+
+// Your reactor (deterministic)
+class MyServiceReactor : public MicroServiceFSMReactor<...> {
+    // FSM-driven implementation
+};
+
+int main() {
+    // Create reactor
+    auto reactor = std::make_shared<MyServiceReactor>("service", port_actions);
+
+    // Create gRPC adapter (runs in separate thread)
+    GrpcAdapter<MyServiceReactor> grpc_adapter(reactor, "0.0.0.0:50051");
+    grpc_adapter.start();  // Start gRPC server thread
+
+    // Run reactor scheduler (deterministic, single-threaded)
+    ReactorScheduler scheduler;
+    reactor->setScheduler(&scheduler);
+    scheduler.registerReactor(reactor);
+    scheduler.run();
+
+    // Cleanup
+    grpc_adapter.stop();
+
+    return 0;
+}
+```
+
+**Architecture:**
+```
+gRPC Thread (async)         Reactor Thread (deterministic)
+     │                               │
+     │  scheduleLogicalAction()      │
+     ├──────────────────────────────>│
+     │                               │ FSM processes
+     │  waitForPortData()            │
+     │<──────────────────────────────┤
+     │                               │
+```
+
+See [IO_ADAPTERS.md](./IO_ADAPTERS.md) for detailed guide.
+
+---
+
+## Testing Your Reactor
+
+### Unit Test: Store Functions
+
+```cpp
+#include <catch2/catch.hpp>
+
+TEST_CASE("CounterStore: increment pure function", "[Store]") {
+    CounterStore store;
+
+    SECTION("Increment by positive amount") {
+        int result = store.increment(5);
+        REQUIRE(result == 5);
+        REQUIRE(store.count == 5);
+    }
+
+    SECTION("Multiple increments") {
+        store.increment(3);
+        store.increment(7);
+        REQUIRE(store.count == 10);
+    }
+}
+
+TEST_CASE("CounterStore: threshold check", "[Store]") {
+    CounterStore store;
+    store.count = 50;
+
+    REQUIRE_FALSE(store.isAboveThreshold(100));
+    REQUIRE(store.isAboveThreshold(25));
+}
+```
+
+### Integration Test: Reactor Behavior
+
+```cpp
+TEST_CASE("CounterReactor: logical action integration", "[Reactor]") {
+    std::map<std::string, std::string> actions = {{"increment_in", "on_increment"}};
+    CounterReactor reactor("test", actions);
+
+    LogicalTag tag{LogicalTime{1000000000}};
+
+    SECTION("Increment via logical action") {
+        reactor.getPorts().increment_in.set(10);
+        reactor.executeLogicalAction(tag, "on_increment");
+
+        REQUIRE(reactor.getStore().count == 10);
+    }
+
+    SECTION("Threshold alert") {
+        reactor.getPorts().increment_in.set(50);
+        reactor.getPorts().threshold_in.set(30);
+        reactor.executeLogicalAction(tag, "on_increment");
+
+        REQUIRE(reactor.getStore().count == 50);
+        REQUIRE(reactor.getPorts().alert_out.is_present());
+        REQUIRE(reactor.getPorts().alert_out.get() == true);
     }
 }
 ```
 
-Error: `ReactorScheduler: Microstep limit exceeded (possible infinite loop)`
-
 ---
 
-## 8. Common Patterns and Best Practices
+## Common Patterns and Best Practices
 
-### Pattern: Conditional Output
+### Pattern 1: Periodic Maintenance (Non-Business Logic)
 
-Only set output ports when certain conditions are met:
+Override `doPeriodicMaintenance()` for logging, metrics, cleanup:
 
 ```cpp
-void doHeartbeat(const LogicalTag& tag) override
-{
-    if (mPorts.trigger_in.is_present())
-    {
-        int result = compute();
-        if (result > threshold)
-        {
-            mPorts.alert_out.set(result);
+class MyReactor : public MicroServiceFSMReactor<...> {
+protected:
+    void doPeriodicMaintenance(const LogicalTag& tag) override {
+        // Logging (not business logic)
+        auto time_s = tag.time.count() / 1'000'000'000;
+        if (time_s % 60 == 0) {
+            SPDLOG_INFO("Heartbeat: processed {} requests", getStore().request_count);
         }
+
+        // Metrics (not business logic)
+        metrics_collector.record("queue_size", getStore().queue.size());
     }
-}
-```
-
----
-
-## 9. Troubleshooting
-
-### Problem: Stale data in input ports
-
-**Symptom**: Input port has value from previous tag
-
-**Solution**: Make sure you're clearing ports! Use `ENABLE_AUTO_CLEAR_PORTS`:
-
-```cpp
-ENABLE_AUTO_CLEAR_PORTS(MyPorts, input1, input2, input3);
-```
-
-### Problem: Reactor not executing
-
-**Symptom**: doHeartbeat() never called
-
-**Solution**: Check that:
-1. Reactor is registered with scheduler: `scheduler.registerReactor(reactor)`
-2. Scheduler has setScheduler: `reactor->setScheduler(&scheduler)`
-3. Scheduler is running: `scheduler.run()`
-
-### Problem: Port connection not working
-
-**Symptom**: Consumer never receives values
-
-**Solution**: Verify connection is established:
-```cpp
-manager.connect(
-    producer->getPorts().out,
-    consumer->getPorts().in,
-    producer->getId(),  // Source reactor ID
-    consumer->getId(),  // Destination reactor ID
-    "connection_name"
-);
-```
-
-### Problem: Compile error with DEFINE_REACTOR
-
-**Symptom**: Template errors about missing types
-
-**Solution**: Ensure Store, Ports, and Container types are fully defined before DEFINE_REACTOR:
-
-```cpp
-// Define these FIRST
-struct MyStore { ... };
-struct MyPorts { ... };
-
-// Then use macro
-DEFINE_REACTOR(MyReactor, MyStore, MyPorts, MicroServiceContainer<>)
-{
-    // ...
 };
 ```
 
-### Problem: Microstep overflow
+**Important:** Don't put business logic here! Business logic belongs in Store.
 
-**Symptom**: `std::overflow_error: Microstep overflow`
+### Pattern 2: Conditional Port Output
 
-**Cause**: More than 4.3 billion microsteps at same logical time (cascading zero-delay events)
+Only set output ports when conditions are met:
 
-**Solution**: Review your reaction logic for infinite loops or cascading events. Add logical time delays.
+```cpp
+struct ProcessingState : public State<ProcessingState, 0> {
+    size_t step(...) {
+        if (trigger.type == StepTrigger::Type::LOGICAL_ACTION &&
+            trigger.action_name == "process") {
+            if (ports.input_in.is_present()) {
+                auto result = store.process(ports.input_in.get());
+
+                // Conditional output
+                if (result.success) {
+                    ports.output_out.set(result.data);
+                } else {
+                    ports.error_out.set(result.error_message);
+                }
+            }
+        }
+        return ProcessingState::index();
+    }
+};
+```
+
+### Pattern 3: State Transition Guards
+
+Use Store functions to determine transitions:
+
+```cpp
+struct ActiveState : public State<ActiveState, 1> {
+    size_t step(...) {
+        if (trigger.type == StepTrigger::Type::HEARTBEAT) {
+            // Check if should transition to idle
+            if (store.shouldEnterIdleMode(tag.time)) {
+                ports.status_out.set("Entering idle mode");
+                return IdleState::index();  // Transition
+            }
+        }
+        return ActiveState::index();  // Stay
+    }
+};
+```
+
+### Pattern 4: Port Convenience Methods
+
+Use helper methods for cleaner code:
+
+```cpp
+// Check and transform in one line
+ports.input_in.if_present([&](int value) {
+    int result = store.process(value);
+    ports.output_out.set(result);
+});
+
+// Transform with optional
+auto result = ports.input_in.transform([](int x) { return x * 2; });
+if (result) {
+    ports.output_out.set(*result);
+}
+```
 
 ---
+
+## Best Practices Summary
+
+✅ **DO:**
+- Put ALL business logic in Store pure functions
+- Use FSM states for coordination only (read ports → call Store → write ports)
+- Use StepTrigger to determine context (heartbeat vs logical action)
+- Use logical actions for event-driven patterns (request-response)
+- Unit test Store functions independently
+- Integration test reactor behavior
+- Use I/O adapters for async frameworks (gRPC, ROS2)
+
+❌ **DON'T:**
+- Put business logic in FSM states (defeats testability!)
+- Override `doHeartbeat()` or `executeLogicalAction()` (they're final!)
+- Access `mStore`, `mPorts`, `mContainer` directly from reactor (they're private!)
+- Mix async I/O code into reactor (use I/O adapters!)
+- Create infinite microstep loops (scheduler will throw after 1000)
+
+---
+
+## Next Steps
+
+- Read [REACTOR_PATTERNS.md](./REACTOR_PATTERNS.md) for advanced architectural patterns
+- Read [IO_ADAPTERS.md](./IO_ADAPTERS.md) for integrating gRPC, ROS2, and other async frameworks
+- See [examples/](./examples/) for complete working examples
+- Read [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md) if migrating existing code
+
+---
+
+**Congratulations!** You now understand mscpp's FSM-driven reactor architecture. Remember the key principle: **Store (business logic) → FSM States (coordination) → Reactor (enforcement)**.

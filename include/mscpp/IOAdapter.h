@@ -95,11 +95,20 @@ public:
 
     /**
      * Virtual destructor ensures proper cleanup.
-     * Automatically stops the I/O thread if running.
+     *
+     * NOTE: Does NOT call stop() automatically to avoid calling pure virtual
+     * functions during destruction. Derived classes MUST call stop() in their
+     * own destructors if they override runIOEventLoop() or stopIOEventLoop().
+     *
+     * This follows C++ best practices: never call virtual functions from
+     * constructors or destructors.
      */
     virtual ~IOAdapter()
     {
-        stop();
+        // Do NOT call stop() here - it would call pure virtual stopIOEventLoop()
+        // after the derived class has been destroyed, causing undefined behavior.
+        //
+        // Derived classes must call stop() in their own destructors.
     }
 
     // Prevent copying (adapter manages thread resources)

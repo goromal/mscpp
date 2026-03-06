@@ -83,10 +83,13 @@ public:
 
     /**
      * Virtual destructor ensures proper gRPC cleanup.
+     * Must call stop() here to ensure cleanup happens before derived class destruction.
      */
     virtual ~GrpcAdapter()
     {
-        // stop() is called by IOAdapter destructor
+        // IMPORTANT: Call stop() here, not in base class destructor.
+        // This ensures stopIOEventLoop() is called while GrpcAdapter is still valid.
+        this->stop();
     }
 
     /**

@@ -152,6 +152,13 @@ public:
     {
     }
 
+    ~MockGrpcAdapter()
+    {
+        // Must call stop() here to avoid calling pure virtual functions
+        // from base class destructor after MockGrpcAdapter is destroyed
+        stop();
+    }
+
     // Expose protected method for testing
     using IOAdapter<GrpcTestReactor>::scheduleReactorAction;
 

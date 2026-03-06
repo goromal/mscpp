@@ -79,10 +79,13 @@ public:
 
     /**
      * Virtual destructor ensures proper ROS2 cleanup.
+     * Must call stop() here to ensure cleanup happens before derived class destruction.
      */
     virtual ~Ros2Adapter()
     {
-        // stop() is called by IOAdapter destructor
+        // IMPORTANT: Call stop() here, not in base class destructor.
+        // This ensures stopIOEventLoop() is called while Ros2Adapter is still valid.
+        this->stop();
     }
 
     /**

@@ -145,6 +145,13 @@ public:
     {
     }
 
+    ~MockRos2Adapter()
+    {
+        // Must call stop() here to avoid calling pure virtual functions
+        // from base class destructor after MockRos2Adapter is destroyed
+        stop();
+    }
+
     // Simulate ROS2 subscription
     void createMockSubscription(const std::string& topic,
                                const std::string& action_name)

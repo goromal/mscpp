@@ -138,6 +138,13 @@ public:
     {
     }
 
+    ~MockIOAdapter()
+    {
+        // Must call stop() here to avoid calling pure virtual functions
+        // from base class destructor after MockIOAdapter is destroyed
+        stop();
+    }
+
     void simulateExternalEvent(int request_id)
     {
         // Simulate an external event (e.g., gRPC request)
