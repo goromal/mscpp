@@ -63,6 +63,8 @@ if (BUILD_TESTS)
         tests/RoboticsE2ETest.cpp
         tests/ContainerTest.cpp
         tests/IOAdapterTest.cpp
+        tests/GrpcAdapterTest.cpp
+        tests/Ros2AdapterTest.cpp
     )
     target_include_directories(${UNIT_TEST} PRIVATE
         tests/example-services
