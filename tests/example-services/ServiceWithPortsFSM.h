@@ -244,7 +244,7 @@ public:
 
     void clearPorts() override
     {
-        mPorts.value_in.clear();
+        getPorts().value_in.clear();
     }
 };
 
@@ -358,19 +358,19 @@ public:
     {
         HeartbeatInput input;
         AddReactionG reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
 
     void executeMultiply()
     {
         IncrementInput input;
         MultiplyReactionG reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
 
     void clearPorts() override
     {
-        mPorts.operand_in.clear();
+        getPorts().operand_in.clear();
     }
 };
 

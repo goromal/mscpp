@@ -115,7 +115,7 @@ public:
     {
         HeartbeatInput input;
         AccumulateReaction reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
 };
 
@@ -142,7 +142,8 @@ struct GatedIdleState : public State<GatedIdleState, 0>
     // Heartbeat while gate is closed: just log.
     size_t step(StoreGated& store, PortsGated& ports,
                 const AppContainer& container,
-                HeartbeatInput& /*input*/)
+                const LogicalTag& /*tag*/,
+                const StepTrigger& /*trigger*/)
     {
         auto& logger = *container.get<SharedLogger>();
 
@@ -164,7 +165,8 @@ struct GatedRunningState : public State<GatedRunningState, 1>
     // Heartbeat while gate is open: increment, output, log.
     size_t step(StoreGated& store, PortsGated& ports,
                 const AppContainer& container,
-                HeartbeatInput& /*input*/)
+                const LogicalTag& /*tag*/,
+                const StepTrigger& /*trigger*/)
     {
         const auto& config = *container.get<AppConfig>();
         auto&       logger = *container.get<SharedLogger>();
@@ -205,15 +207,9 @@ public:
                                         StatesGated>;
     using Base::Base;
 
-    void doHeartbeat(const LogicalTag& /*tag*/) override
-    {
-        HeartbeatInput input;
-        executeInput(input);
-    }
-
     void clearPorts() override
     {
-        mPorts.gate_cmd.clear();
+        getPorts().gate_cmd.clear();
     }
 };
 

@@ -83,7 +83,7 @@ public:
     {
         HeartbeatInput input;
         HeartbeatReactionC reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
 };
 
@@ -156,12 +156,12 @@ public:
     {
         HeartbeatInput input;
         HeartbeatReactionD reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
 
     void clearPorts() override
     {
-        mPorts.counter_in.clear();
+        getPorts().counter_in.clear();
     }
 };
 
@@ -233,12 +233,12 @@ public:
     {
         HeartbeatInput input;
         TransformReactionE reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
 
     void clearPorts() override
     {
-        mPorts.value_in.clear();
+        getPorts().value_in.clear();
     }
 };
 

@@ -4,8 +4,12 @@
 #include "Reaction.h"
 #include "ReactorScheduler.h"
 #include "MicroServiceContainer.h"
+#include "StepTrigger.h"
 #include <string>
 #include <memory>
+#include <mutex>
+#include <vector>
+#include <any>
 
 /**
  * MicroServiceReactor - Template base class for reactors using port-based I/O
@@ -232,6 +236,41 @@ public:
     }
 
     /**
+     * Schedule a logical action with data from external thread (thread-safe).
+     *
+     * This method enables thread-safe logical action scheduling from I/O adapters
+     * running in separate threads. The action and its data are queued and will be
+     * processed on the next reactor heartbeat.
+     *
+     * THREAD SAFETY:
+     * - Safe to call from any thread
+     * - Uses mutex to protect pending action queue
+     * - Actions are processed during doHeartbeat() via processPendingActions()
+     *
+     * USAGE PATTERN:
+     * - I/O adapters call this when external events arrive
+     * - Data is stored as std::any for type erasure
+     * - Reactor processes actions during heartbeat
+     *
+     * Example:
+     *   // From gRPC thread:
+     *   reactor->scheduleLogicalActionWithData("job_request", job_data);
+     *
+     * @tparam ActionData Type of data payload
+     * @param action_name Name of the logical action to schedule
+     * @param data Data payload for the action
+     */
+    template<typename ActionData>
+    void scheduleLogicalActionWithData(const std::string& action_name, ActionData&& data)
+    {
+        std::lock_guard<std::mutex> lock(mActionQueueMutex);
+        mPendingActions.emplace_back(PendingAction{
+            action_name,
+            std::make_any<ActionData>(std::forward<ActionData>(data))
+        });
+    }
+
+    /**
      * Schedule a physical action (advances both time and resets microstep).
      *
      * Physical actions schedule reactions at a future logical time.
@@ -309,10 +348,6 @@ public:
     }
 
 protected:
-    Store mStore;        ///< Reactor's mutable state
-    Ports mPorts;        ///< Input and output port collection
-    Container mContainer; ///< Dependency injection container
-
     // ── Pure virtuals for subclasses ─────────────────────────────────
 
     /**
@@ -346,9 +381,54 @@ protected:
         return LogicalTime(10'000'000);   // 10 ms
     }
 
+protected:
+    /**
+     * Process pending logical actions queued from external threads.
+     *
+     * This method is called at the beginning of each heartbeat to process
+     * any logical actions that were queued via scheduleLogicalActionWithData()
+     * from I/O adapter threads.
+     *
+     * Thread-safe: Yes (uses mutex to safely extract queued actions)
+     *
+     * @param tag Current logical tag for executing actions
+     */
+    void processPendingActions(const LogicalTag& tag)
+    {
+        std::vector<PendingAction> actions;
+        {
+            std::lock_guard<std::mutex> lock(mActionQueueMutex);
+            actions.swap(mPendingActions);
+        }
+
+        for (auto& action : actions)
+        {
+            executeLogicalAction(tag, action.name);
+        }
+    }
+
 private:
+    /**
+     * Pending action data structure.
+     *
+     * Stores action name and associated data payload for actions
+     * queued from external threads.
+     */
+    struct PendingAction
+    {
+        std::string name;  ///< Action name
+        std::any data;     ///< Action data payload (type-erased)
+    };
+
+    Store mStore;        ///< Reactor's mutable state
+    Ports mPorts;        ///< Input and output port collection
+    Container mContainer; ///< Dependency injection container
+
     size_t            mReactorId{0};       ///< Unique reactor identifier
     ReactorScheduler* mScheduler{nullptr}; ///< Scheduler managing this reactor
+
+    std::mutex mActionQueueMutex;           ///< Mutex protecting pending action queue
+    std::vector<PendingAction> mPendingActions; ///< Queue of pending actions from external threads
 };
 
 /**
@@ -356,6 +436,11 @@ private:
  *
  * Extends MicroServiceReactor with FSM state machine functionality.
  * Combines port-based I/O with traditional FSM state transitions.
+ *
+ * ARCHITECTURAL ENFORCEMENT:
+ * - doHeartbeat() and executeLogicalAction() are FINAL and cannot be overridden
+ * - FSM states must use signature: step(Store&, Ports&, Container&, LogicalTag&, StepTrigger&)
+ * - This enforces FSM-driven patterns where states coordinate Store + Ports
  *
  * Template Parameters:
  * - Name, Store, Ports, Container: Same as MicroServiceReactor
@@ -368,7 +453,7 @@ private:
  *       using Base = MicroServiceFSMReactor<...>;
  *       using Base::Base;
  *
- *       // FSM states can access ports via getPorts()
+ *       // Optionally override doPeriodicMaintenance() for non-business-logic periodic work
  *   };
  */
 template<const char* Name,
@@ -392,10 +477,52 @@ public:
     using Base::Base;
 
     /**
-     * Execute an input through the FSM
+     * Execute heartbeat logic through FSM (FINAL - cannot be overridden)
+     *
+     * This enforces the FSM-driven pattern:
+     * 1. Processes any pending logical actions from I/O adapters
+     * 2. Invokes FSM state step() with StepTrigger::heartbeat()
+     * 3. Clears input ports after FSM step
+     * 4. Calls doPeriodicMaintenance() for optional non-business-logic work
+     *
+     * @param tag Current logical tag
+     */
+    void doHeartbeat(const LogicalTag& tag) final override
+    {
+        // Process any pending actions queued from I/O adapters
+        this->processPendingActions(tag);
+
+        // Run FSM step with heartbeat trigger
+        auto trigger = StepTrigger::heartbeat();
+        mStateMachine.step(this->getStore(), this->getPorts(), this->getContainer(), tag, trigger);
+
+        // Periodic maintenance hook (for metrics, logging, etc. - NOT business logic)
+        doPeriodicMaintenance(tag);
+    }
+
+    /**
+     * Execute logical action through FSM (FINAL - cannot be overridden)
+     *
+     * This enforces the FSM-driven pattern for event-driven reactions.
+     * Invokes FSM state step() with StepTrigger::logicalAction(action_name).
+     *
+     * @param tag Current logical tag
+     * @param action_name Name of the logical action to execute
+     */
+    void executeLogicalAction(const LogicalTag& tag, const std::string& action_name) final override
+    {
+        // Run FSM step with logical action trigger
+        auto trigger = StepTrigger::logicalAction(action_name);
+        mStateMachine.step(this->getStore(), this->getPorts(), this->getContainer(), tag, trigger);
+    }
+
+    /**
+     * Execute an input through the FSM (DEPRECATED - for backward compatibility)
+     *
+     * DEPRECATED: This old pattern is kept for migration purposes.
+     * New code should use FSM states with StepTrigger instead.
      *
      * Dispatches to the current state's step() function for this input type.
-     * State step functions can access ports via this->getPorts().
      *
      * @tparam InputType Type of input to process
      * @param input Input to process through current state
@@ -403,10 +530,10 @@ public:
     template<typename InputType>
     void executeInput(InputType& input)
     {
-        // Dispatch to state machine
+        // Dispatch to state machine (old signature)
         // The state's step() function signature:
         // size_t step(Store& store, Ports& ports, const Container& c, InputType& input)
-        mStateMachine.execute(this->mStore, this->mPorts, this->mContainer, input);
+        mStateMachine.execute(this->getStore(), this->getPorts(), this->getContainer(), input);
     }
 
     /**
@@ -420,6 +547,24 @@ public:
     }
 
 protected:
+    /**
+     * Optional hook for periodic maintenance work (NOT business logic)
+     *
+     * Called after every heartbeat FSM step. Override to perform:
+     * - Logging
+     * - Metrics collection
+     * - Database maintenance (vacuum, cleanup)
+     * - Health checks
+     *
+     * DO NOT put business logic here! Business logic belongs in Store pure functions.
+     *
+     * @param tag Current logical tag
+     */
+    virtual void doPeriodicMaintenance([[maybe_unused]] const LogicalTag& tag)
+    {
+        // Default: nothing to do
+    }
+
     StateSetType mStateMachine; ///< Finite state machine instance
 };
 

@@ -171,7 +171,7 @@ public:
     {
         HeartbeatInput input;
         IMUHeartbeatReaction reaction;
-        reaction.execute(mStore, mPorts, mContainer, input);
+        reaction.execute(getStore(), getPorts(), getContainer(), input);
     }
     // No input ports; base-class clearPorts() default (no-op) is correct.
 };
@@ -348,15 +348,15 @@ public:
         FilterPoseReaction    r1;
         PublishEstimateReaction r2;
 
-        r0.execute(mStore, mPorts, mContainer, input);
-        r1.execute(mStore, mPorts, mContainer, input);
-        r2.execute(mStore, mPorts, mContainer, input);
+        r0.execute(getStore(), getPorts(), getContainer(), input);
+        r1.execute(getStore(), getPorts(), getContainer(), input);
+        r2.execute(getStore(), getPorts(), getContainer(), input);
     }
 
     void clearPorts() override
     {
-        mPorts.raw_imu.clear();
-        mPorts.reset_cmd.clear();
+        getPorts().raw_imu.clear();
+        getPorts().reset_cmd.clear();
     }
 };
 
@@ -400,7 +400,8 @@ struct IdleStatePlanner : public State<IdleStatePlanner, 0>
 {
     size_t step(StorePlanner& store, PortsPlanner& ports,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& /*input*/)
+                const LogicalTag& /*tag*/,
+                const StepTrigger& /*trigger*/)
     {
         if (ports.filtered_pose.is_present())
         {
@@ -427,7 +428,8 @@ struct PlanningStatePlanner : public State<PlanningStatePlanner, 1>
 {
     size_t step(StorePlanner& store, PortsPlanner& /*ports*/,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& /*input*/)
+                const LogicalTag& /*tag*/,
+                const StepTrigger& /*trigger*/)
     {
         // Toy planner: velocity = (waypoint - pose), clamped to unit magnitude
         double dx = store.current_waypoint.target_x - store.current_pose.x;
@@ -453,7 +455,8 @@ struct ExecutingStatePlanner : public State<ExecutingStatePlanner, 2>
 {
     size_t step(StorePlanner& store, PortsPlanner& ports,
                 const MicroServiceContainer<>& /*container*/,
-                HeartbeatInput& /*input*/)
+                const LogicalTag& /*tag*/,
+                const StepTrigger& /*trigger*/)
     {
         ports.velocity_cmd.set(store.last_velocity);
         store.commands_emitted++;
@@ -475,16 +478,10 @@ public:
                                         MicroServiceContainer<>, StatesetPlanner>;
     using Base::Base;
 
-    void doHeartbeat(const LogicalTag& /*tag*/) override
-    {
-        HeartbeatInput input;
-        executeInput(input);
-    }
-
     void clearPorts() override
     {
-        mPorts.filtered_pose.clear();
-        mPorts.waypoint_cmd.clear();
+        getPorts().filtered_pose.clear();
+        getPorts().waypoint_cmd.clear();
     }
 };
 
