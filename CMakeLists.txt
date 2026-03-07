@@ -84,7 +84,7 @@ if (BUILD_TESTS)
         COMMENT "Run all unit tests"
         POST_BUILD
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMAND ${UNIT_TEST}
+        COMMAND $<TARGET_FILE:${UNIT_TEST}>
     )
 
     include(CTest)
