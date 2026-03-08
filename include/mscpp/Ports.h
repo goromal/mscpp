@@ -440,7 +440,10 @@ struct AutoClearPorts {
  */
 #define REGISTER_INPUT_PORTS(...) \
     void clearAllRegisteredPorts() { \
-        (__VA_ARGS__.clear(), ...); \
+        auto clear_all = [&]<typename... Ports>(Ports&... ports) { \
+            (ports.clear(), ...); \
+        }; \
+        clear_all(__VA_ARGS__); \
     }
 
 /**
