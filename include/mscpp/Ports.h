@@ -426,7 +426,7 @@ struct AutoClearPorts {
 /**
  * Macro for one-line registration of input ports
  *
- * This macro generates the getInputPortsTuple() method required by AutoClearPorts.
+ * This macro generates the clearAllRegisteredPorts() method required by AutoClearPorts.
  * List all InputPort members that should be automatically cleared.
  *
  * Usage:
@@ -440,8 +440,7 @@ struct AutoClearPorts {
  */
 #define REGISTER_INPUT_PORTS(...) \
     void clearAllRegisteredPorts() { \
-        auto clear_port = [](auto& port) { port.clear(); }; \
-        (clear_port(__VA_ARGS__), ...); \
+        (__VA_ARGS__.clear(), ...); \
     }
 
 /**
