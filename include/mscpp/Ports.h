@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <variant>
 #include <functional>
+#include <tuple>
 
 /**
  * Port-Based I/O for Reactors
@@ -378,6 +379,75 @@ template<typename T>
 struct IsOutputPort<OutputPort<T>> : std::true_type {};
 
 /**
+ * C++20 Concept for InputPort detection
+ *
+ * Validates that a type has the InputPort interface:
+ * - clear() -> void
+ * - is_present() -> bool
+ * - get() method
+ */
+template<typename T>
+concept IsInputPortConcept = requires(T t) {
+    { t.clear() } -> std::same_as<void>;
+    { t.is_present() } -> std::same_as<bool>;
+    { t.get() };
+};
+
+/**
+ * CRTP base class for automatic input port clearing
+ *
+ * Inherit from this class and use REGISTER_INPUT_PORTS macro to enable
+ * automatic clearing of all input ports without manual template specialization.
+ *
+ * Example:
+ *   struct Ports : AutoClearPorts<Ports> {
+ *       InputPort<int> counter_in;
+ *       InputPort<std::string> msg_in;
+ *       OutputPort<int> counter_out;
+ *
+ *       REGISTER_INPUT_PORTS(counter_in, msg_in)
+ *   };
+ *
+ * The clearAllInputPorts() method will automatically clear all registered ports.
+ */
+template<typename Derived>
+struct AutoClearPorts {
+    /**
+     * Clear all registered input ports
+     *
+     * This method is called automatically by the generic clearInputPorts() function.
+     * It uses std::tie and fold expressions to iterate over all registered ports
+     * at compile-time with zero runtime overhead.
+     */
+    void clearAllInputPorts() {
+        auto& ports = static_cast<Derived*>(this)->getInputPortsTuple();
+        std::apply([](auto&... port_refs) {
+            (port_refs.get().clear(), ...);
+        }, ports);
+    }
+};
+
+/**
+ * Macro for one-line registration of input ports
+ *
+ * This macro generates the getInputPortsTuple() method required by AutoClearPorts.
+ * List all InputPort members that should be automatically cleared.
+ *
+ * Usage:
+ *   struct Ports : AutoClearPorts<Ports> {
+ *       InputPort<int> counter_in;
+ *       InputPort<std::string> msg_in;
+ *       OutputPort<int> counter_out;  // Not included in registration
+ *
+ *       REGISTER_INPUT_PORTS(counter_in, msg_in)
+ *   };
+ */
+#define REGISTER_INPUT_PORTS(...) \
+    auto getInputPortsTuple() { \
+        return std::tie(__VA_ARGS__); \
+    }
+
+/**
  * Clear all input ports in a port set using template metaprogramming
  * Called by scheduler at end of each tag
  *
@@ -429,14 +499,26 @@ namespace detail
     }
 
 /**
- * Generic fallback that does nothing (for backwards compatibility)
- * Override this for your specific port types using ENABLE_AUTO_CLEAR_PORTS
+ * Generic clearInputPorts function with automatic detection
+ *
+ * This function automatically detects if the Ports struct has the clearAllInputPorts()
+ * method (via AutoClearPorts CRTP base class) and calls it. Otherwise, it falls back
+ * to no-op for backwards compatibility with existing code.
+ *
+ * Three modes of operation:
+ * 1. Auto-clearing (recommended): Inherit from AutoClearPorts and use REGISTER_INPUT_PORTS
+ * 2. Macro-based: Use ENABLE_AUTO_CLEAR_PORTS macro
+ * 3. Manual specialization: Define template<> void clearInputPorts<YourPorts>(...)
  */
 template<typename PortSetType>
-void clearInputPorts([[maybe_unused]] PortSetType& ports)
+void clearInputPorts(PortSetType& ports)
 {
-    // Default: no-op (backwards compatible)
-    // Use ENABLE_AUTO_CLEAR_PORTS macro to enable automatic clearing
+    // Check if clearAllInputPorts() method exists (AutoClearPorts pattern)
+    if constexpr (requires { ports.clearAllInputPorts(); }) {
+        ports.clearAllInputPorts();
+    }
+    // Otherwise: no-op (backwards compatible)
+    // Use AutoClearPorts + REGISTER_INPUT_PORTS or ENABLE_AUTO_CLEAR_PORTS macro
 }
 
 } // namespace services
