@@ -1,5 +1,7 @@
 #pragma once
 #include "internal/utils.h"
+#include "StepTrigger.h"
+#include "LogicalTime.h"
 
 namespace services
 {
@@ -31,6 +33,74 @@ public:
     void transition(const size_t& state)
     {
         mActiveState = state;
+    }
+
+    size_t activeState() const
+    {
+        return mActiveState;
+    }
+
+    /**
+     * Execute a step on the active state (new FSM-driven pattern)
+     *
+     * Template Parameters:
+     * - Store: State storage type
+     * - Ports: Port collection type
+     * - Container: Dependency injection container
+     *
+     * Calls the active state's step(store, ports, container, tag, trigger) method
+     * and transitions to the returned state.
+     *
+     * This is the new signature that enforces FSM-driven patterns with StepTrigger.
+     * States receive context about why they were invoked (heartbeat, logical action, etc.)
+     */
+    template<typename Store, typename Ports, typename Container>
+    void step(Store& store, Ports& ports, const Container& container,
+              const LogicalTag& tag, const StepTrigger& trigger)
+    {
+        size_t nextState = runOnActiveState([&](auto& state) {
+            return state.step(store, ports, container, tag, trigger);
+        });
+        transition(nextState);
+    }
+
+    /**
+     * Execute an input on the active state (with ports support)
+     *
+     * DEPRECATED: Use step() with StepTrigger instead.
+     * This is kept for backward compatibility during migration.
+     *
+     * Template Parameters:
+     * - Store: State storage type
+     * - Ports: Port collection type
+     * - Container: Dependency injection container
+     * - InputType: Input type to process
+     *
+     * Calls the active state's step(store, ports, container, input) method
+     * and transitions to the returned state.
+     */
+    template<typename Store, typename Ports, typename Container, typename InputType>
+    void execute(Store& store, Ports& ports, const Container& container, InputType& input)
+    {
+        size_t nextState = runOnActiveState([&](auto& state) {
+            return state.step(store, ports, container, input);
+        });
+        transition(nextState);
+    }
+
+    /**
+     * Execute an input on the active state (original signature without ports)
+     *
+     * DEPRECATED: Use step() with StepTrigger instead.
+     * For backward compatibility with existing FSM code that doesn't use ports.
+     */
+    template<typename Store, typename Container, typename InputType>
+    void execute(Store& store, const Container& container, InputType& input)
+    {
+        size_t nextState = runOnActiveState([&](auto& state) {
+            return state.step(store, container, input);
+        });
+        transition(nextState);
     }
 
     template<typename F>
