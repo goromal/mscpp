@@ -403,8 +403,31 @@ protected:
 
         for (auto& action : actions)
         {
+            // Allow derived class to process action data before executing action
+            // This enables transfer of action.data to input ports
+            processActionData(action.name, action.data);
+
+            // Execute the logical action
             executeLogicalAction(tag, action.name);
         }
+    }
+
+    /**
+     * Process action data (e.g., write to input ports).
+     *
+     * This virtual method is called for each pending action before executeLogicalAction().
+     * Override this in derived classes to transfer action.data to appropriate input ports.
+     *
+     * Default implementation is a no-op.
+     *
+     * @param action_name Name of the action
+     * @param action_data Type-erased data payload (use std::any_cast to extract)
+     */
+    virtual void processActionData(const std::string& action_name, const std::any& action_data)
+    {
+        // Default: no-op
+        (void)action_name;
+        (void)action_data;
     }
 
 private:
