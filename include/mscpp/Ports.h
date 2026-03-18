@@ -8,6 +8,8 @@
 #include <variant>
 #include <functional>
 #include <tuple>
+#include <mutex>
+#include <condition_variable>
 
 /**
  * Port-Based I/O for Reactors
@@ -214,9 +216,18 @@ public:
      * Set the value on this port
      * Creates a tagged event at current_tag.next_microstep()
      * The event will be delivered to connected input ports
+     * Also caches value for external thread access (IOAdapter pattern)
      */
     void set(T&& value)
     {
+        // Cache value for external thread access (thread-safe)
+        {
+            std::lock_guard<std::mutex> lock(mCacheMutex);
+            mCachedValue = value;  // Copy before move
+            mHasCachedValue = true;
+        }
+        mCacheCV.notify_all();
+
         if (mScheduleCallback)
         {
             mScheduleCallback(std::move(value));
@@ -236,6 +247,41 @@ public:
     {
         T value_copy = value;
         set(std::move(value_copy));
+    }
+
+    /**
+     * Check if port has a cached value (for external thread access)
+     * Thread-safe: Yes
+     */
+    bool is_present() const
+    {
+        std::lock_guard<std::mutex> lock(mCacheMutex);
+        return mHasCachedValue;
+    }
+
+    /**
+     * Get cached value (for external thread access)
+     * Thread-safe: Yes
+     * @throws std::runtime_error if no value present
+     */
+    T get() const
+    {
+        std::lock_guard<std::mutex> lock(mCacheMutex);
+        if (!mHasCachedValue)
+        {
+            throw std::runtime_error("OutputPort::get() called but no value present");
+        }
+        return mCachedValue;
+    }
+
+    /**
+     * Clear cached value (called by reactor scheduler after processing)
+     */
+    void clear_cache()
+    {
+        std::lock_guard<std::mutex> lock(mCacheMutex);
+        mHasCachedValue = false;
+        mCachedValue = T{};
     }
 
     /**
@@ -275,6 +321,12 @@ private:
     std::function<void(T&&)> mScheduleCallback;
     std::optional<T> mPendingValue;
     bool mHasPendingValue{false};
+
+    // Thread-safe caching for external thread access (IOAdapter pattern)
+    mutable std::mutex mCacheMutex;
+    mutable std::condition_variable mCacheCV;
+    T mCachedValue{};
+    bool mHasCachedValue{false};
 };
 
 /**
